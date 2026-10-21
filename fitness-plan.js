@@ -86,12 +86,45 @@
     {id:"r-weekly", time:"10:00", days:[0], type:"weekly", enabled:true}
   ];
 
-  function defaultFitness(){ return Object.assign(clone(DEFAULT_FITNESS), {reminders: clone(DEFAULT_REMINDERS)}); }
-  // 舊資料沒有 fitness(或沒有 reminders)時補上預設值；回傳 true 代表有補，呼叫端要存檔
+  // ---------- 飲食 ----------
+  // fitness.presets:固定餐(目前只有固定早午餐),從 startDate 起每天自動計入，不寫進紀錄
+  // fitness.foods:常吃清單 [{id, name, kcal, protein, fat?, carbs?}]
+  const FOOD_SOURCES = {label:"包裝標示", estimate:"估計", tentative:"暫估，待確認"};
+  const DEFAULT_PRESETS = [{id:"brunch", name:"固定早午餐", items:[
+    {id:"burger", name:"益活雞力能量堡", kcal:202, protein:16, fat:4.1, carbs:25.2, source:"label"},
+    {id:"egg-whole", name:"茶葉蛋 2 顆(整顆)", kcal:144, protein:12.6, fat:9.6, carbs:1.2, source:"estimate"},
+    {id:"egg-white", name:"茶葉蛋 3 顆(只吃蛋白)", kcal:51, protein:10.8, fat:0.3, carbs:0.6, source:"estimate"},
+    {id:"milk", name:"蛋白牛奶 1 瓶", kcal:200, protein:20, fat:5, carbs:20, source:"tentative"}
+  ]}];
+
+  function defaultFitness(){ return Object.assign(clone(DEFAULT_FITNESS), {reminders: clone(DEFAULT_REMINDERS), presets: clone(DEFAULT_PRESETS), foods: []}); }
+  // 舊資料沒有 fitness(或缺 reminders / presets / foods)時補上預設值；回傳 true 代表有補，呼叫端要存檔
   function ensureFitness(s){
     if(!(s.fitness && typeof s.fitness === "object" && s.fitness.sessions)){ s.fitness = defaultFitness(); return true; }
-    if(!Array.isArray(s.fitness.reminders)){ s.fitness.reminders = clone(DEFAULT_REMINDERS); return true; }
-    return false;
+    let added = false;
+    if(!Array.isArray(s.fitness.reminders)){ s.fitness.reminders = clone(DEFAULT_REMINDERS); added = true; }
+    if(!Array.isArray(s.fitness.presets)){ s.fitness.presets = clone(DEFAULT_PRESETS); added = true; }
+    if(!Array.isArray(s.fitness.foods)){ s.fitness.foods = []; added = true; }
+    return added;
+  }
+
+  // 某一天吃了什麼：固定早午餐(從 startDate 起自動)+ 當天紀錄 log = {meals, brunchSkipped, brunchOff}
+  const num = v => { const n = Number(v); return isFinite(n) ? n : 0; };
+  const round1 = n => Math.round(n * 10) / 10;
+  function dietDay(F, log, date){
+    log = log || {};
+    const start = F && parseYMD(F.startDate);
+    const auto = !!start && Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()) >= Date.UTC(start.getFullYear(), start.getMonth(), start.getDate());
+    const preset = ((F && F.presets) || [])[0] || null, skipped = !!log.brunchSkipped, off = log.brunchOff || [];
+    const items = [];
+    if(auto && preset) (preset.items || []).forEach(it=>items.push(Object.assign({}, it, {auto:true, off: skipped || off.includes(it.id)})));
+    (log.meals || []).forEach(m=>items.push(Object.assign({}, m, {auto:false, off:false})));
+    const totals = {kcal:0, protein:0, fat:0, carbs:0};
+    items.forEach(it=>{ if(!it.off) for(const k in totals) totals[k] += num(it[k]); });
+    for(const k in totals) totals[k] = round1(totals[k]);
+    const f = fitnessDay(F, date), targets = f ? {kcal: num(f.type.kcal), protein: num(f.type.protein)} : null;
+    const left = targets ? {kcal: round1(targets.kcal - totals.kcal), protein: round1(targets.protein - totals.protein)} : null;
+    return {auto, preset, skipped, items, totals, targets, left, start};
   }
 
   // 某一天的課表：第幾天/第幾週、類型、營養目標、套用該週調整後的動作。date 用本地時間的年月日
@@ -146,5 +179,6 @@
   const timeToMinutes = t => { const m = /^(\d{1,2}):(\d{2})$/.exec(t || ""); return m ? +m[1] * 60 + +m[2] : null; };
 
   return {DOW, parseYMD, ymd, DEFAULT_FITNESS, DEFAULT_REMINDERS, REMINDER_TYPES, TIME_ZONE,
-          defaultFitness, ensureFitness, fitnessDay, phaseLabel, reminderMessage, taipeiParts, timeToMinutes};
+          defaultFitness, ensureFitness, fitnessDay, phaseLabel, reminderMessage, taipeiParts, timeToMinutes,
+          FOOD_SOURCES, DEFAULT_PRESETS, dietDay};
 });

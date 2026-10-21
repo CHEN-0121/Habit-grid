@@ -199,6 +199,7 @@ td.off .rest{color:var(--line-strong)}
 .ftip b{display:block;font-size:12px;color:var(--accent);margin-bottom:2px}
 .ftip ol{margin:0;padding-left:1.3em}
 .fset{display:flex;align-items:center;gap:10px;font-size:13px}
+.fset > span{white-space:nowrap}
 .fset input{font:inherit;color:inherit;background:var(--bg);border:1px solid var(--line-strong);border-radius:6px;padding:7px 10px}
 .testday{font-size:12px;padding:2px 8px;border-radius:999px;background:var(--today);color:var(--ink)}
 .push{display:flex;flex-direction:column;gap:10px;border-top:1px solid var(--line);padding-top:12px}
@@ -214,6 +215,47 @@ td.off .rest{color:var(--line-strong)}
 .rem.off > :not(.rtog):not(.del){opacity:.5}
 .rem .edays{grid-column:1/-1}
 @media (max-width:520px){.rem{grid-template-columns:auto 132px minmax(0,1fr) auto}}
+/* diet log */
+.fpart{display:contents}
+.diet{display:flex;flex-direction:column;gap:10px;border:1px solid var(--line);border-radius:8px;padding:12px;background:var(--bg)}
+.dhead{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.dhead h3{margin:0;font-size:15px}
+.dbar{display:grid;grid-template-columns:3.5em minmax(0,1fr) auto;gap:8px;align-items:center;font-size:12px}
+.dbar .meter{height:10px;background:var(--band)}
+.dbar .meter i.over{background:var(--danger)}
+.dbar .dv{font-family:var(--f-num);white-space:nowrap}
+.dleft{margin:0;font-size:14px;font-weight:700}
+.dleft small{font-weight:400;color:var(--muted);font-size:12px}
+.dgroup{display:flex;flex-direction:column}
+.dgh{display:flex;flex-wrap:wrap;align-items:center;gap:6px 8px;font-size:13px;padding-bottom:4px}
+.dgh .sp{flex:1}
+.tag{font-size:11px;padding:1px 7px;border-radius:999px;background:var(--accent-soft);color:var(--ink)}
+.tag.warn{background:var(--today);color:var(--ink)}
+.dlist{list-style:none;margin:0;padding:0}
+.drow{display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:4px 8px;align-items:center;padding:7px 0;border-top:1px solid var(--line);font-size:13px}
+.drow .dn{min-width:0}
+.drow .dk{font-family:var(--f-num);font-size:12px;color:var(--muted);white-space:nowrap}
+.drow.off .dn,.drow.off .dk{text-decoration:line-through;color:var(--muted)}
+.drow .acts{display:flex;gap:4px}
+.mini{border:1px solid var(--line-strong);background:var(--sheet);border-radius:6px;padding:3px 8px;font-size:12px;min-height:30px}
+.mini.del.armed{background:var(--danger);border-color:var(--danger);color:var(--sheet)}
+.dnote{margin:0;font-size:12px;color:var(--muted)}
+.dform{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+.dform label{display:flex;flex-direction:column;gap:2px;font-size:12px;color:var(--muted)}
+.dform input{font:inherit;color:var(--ink);background:var(--sheet);border:1px solid var(--line-strong);border-radius:6px;padding:7px 9px;min-width:0}
+.dform .wide{grid-column:1/-1}
+.dfacts{display:flex;gap:8px}
+#dietFavs{display:flex;flex-wrap:wrap;gap:6px;align-items:center;font-size:12px;color:var(--muted)}
+#dietFavs:empty{display:none}
+.fav{border:1px solid var(--line-strong);background:var(--sheet);border-radius:999px;padding:4px 10px;font-size:12px;min-height:30px}
+.fav:hover{border-color:var(--accent)}
+.presets{display:flex;flex-direction:column;gap:10px;border-top:1px solid var(--line);padding-top:12px}
+.presets h3{margin:0;font-size:15px}
+.prow{display:grid;grid-template-columns:repeat(4,minmax(0,1fr)) minmax(0,1.6fr) auto;gap:6px;align-items:end;padding-bottom:10px;border-bottom:1px dashed var(--line)}
+.prow label{display:flex;flex-direction:column;gap:2px;font-size:11px;color:var(--muted);min-width:0}
+.prow .pname{grid-column:1/-1}
+.prow input,.prow select,.presets .pset input{font:inherit;color:inherit;background:var(--bg);border:1px solid var(--line-strong);border-radius:6px;padding:6px 8px;min-width:0;width:100%}
+@media (max-width:520px){.prow{grid-template-columns:repeat(2,minmax(0,1fr))}.prow .psrc{grid-column:1/-1}}
 thead .frow th{font-size:11px;padding:3px 0;background:var(--sheet);color:var(--muted)}
 thead .frow .stick{background:var(--sheet);font-weight:700;color:var(--ink);padding:3px 10px}
 thead .frow .ft-lift{color:var(--ink);font-weight:700}
@@ -314,7 +356,23 @@ thead .frow .ft-run{color:var(--accent);font-weight:700}
     <ul class="tlist" id="tlist"></ul>
     <div class="today-foot">完整的每日長條圖、每週進度與各習慣達成率，切到「整月表格」查看(電腦螢幕最清楚)。</div>
   </section>
-  <aside class="fcard" id="fCard" aria-label="今日課表" tabindex="-1" hidden></aside>
+  <aside class="fcard" id="fCard" aria-label="今日課表" tabindex="-1" hidden>
+    <div id="fTop" class="fpart"></div>
+    <section class="diet" id="fDiet" aria-label="今日飲食">
+      <div id="dietView" class="fpart"></div>
+      <form class="dform" id="dietForm" hidden autocomplete="off">
+        <input type="hidden" id="dfId">
+        <label class="wide"><span>名稱</span><input id="dfName" maxlength="40" required></label>
+        <label><span>熱量 kcal</span><input id="dfKcal" type="number" inputmode="decimal" min="0" step="any" required></label>
+        <label><span>蛋白質 g</span><input id="dfProtein" type="number" inputmode="decimal" min="0" step="any" required></label>
+        <label><span>脂肪 g(選填)</span><input id="dfFat" type="number" inputmode="decimal" min="0" step="any"></label>
+        <label><span>碳水 g(選填)</span><input id="dfCarbs" type="number" inputmode="decimal" min="0" step="any"></label>
+        <div class="wide dfacts"><button class="btn primary" type="submit" id="dfSubmit">加入</button><button class="btn" type="button" id="dfCancel">取消</button></div>
+      </form>
+      <div id="dietFavs"></div>
+    </section>
+    <div id="fRest" class="fpart"></div>
+  </aside>
   </div>
 
   <section class="editor" id="fitSettings" hidden aria-label="健身計畫設定">
@@ -322,6 +380,14 @@ thead .frow .ft-run{color:var(--accent);font-weight:700}
     <p id="fitInfo"></p>
     <label class="fset"><span>開始日期</span><input type="date" id="fitStart" required></label>
     <p class="err" id="fitErr" role="alert"></p>
+
+    <div class="presets">
+      <h3>固定早午餐</h3>
+      <p class="phint">從開始日期起每天自動計入，不用手動輸入。哪天沒照常吃，在今日課表的「今日飲食」按「沒吃」就好。</p>
+      <label class="fset pset"><span>名稱</span><input id="presetName" maxlength="30"></label>
+      <div id="presetItems"></div>
+      <div><button class="btn" id="presetAdd" type="button">＋ 新增項目</button></div>
+    </div>
 
     <div class="push">
       <h3>推播提醒</h3>
@@ -808,6 +874,8 @@ thead .frow .ft-run{color:var(--accent);font-weight:700}
       `<div><dt>碳水</dt><dd>${T.carbs}<small> g</small></dd></div></dl>`;
     h += `<p class="fline">👣 步數目標 <b>${esc(T.steps || "")}</b>(每週 ${esc(F.weeklySteps || "")})</p>`;
     if(F.dailyTask) h += `<p class="fline">⚖️ ${esc(F.dailyTask)}</p>`;
+    document.getElementById("fTop").innerHTML = h;
+    h = "";   // 以下放在「今日飲食」區塊之後
     if(f.s.note) h += `<p class="fnote">${esc(f.s.note)}</p>`;
     if(f.exercises.length){
       h += `<ol class="fex">` + f.exercises.map(e=>`<li class="${e.skip ? "skip" : ""}"><span class="fn">${esc(e.name)}${e.skip ? `<span class="adj">本週不做</span>` : e.from ? `<span class="adj">本週 ${e.from}→${e.sets} 組</span>` : ""}</span>` +
@@ -819,8 +887,172 @@ thead .frow .ft-run{color:var(--accent);font-weight:700}
     if(f.s.type === "lift" && tips.lift) h += `<div class="ftip"><b>加重量規則</b>${esc(tips.lift)}</div>`;
     if(Array.isArray(tips.dinner)) h += `<div class="ftip"><b>晚餐三件事</b><ol>${tips.dinner.map(t=>`<li>${esc(t)}</li>`).join("")}</ol></div>`;
     if(f.dow === 0 && tips.sundayCheck) h += `<div class="ftip"><b>每週檢查</b>${esc(tips.sundayCheck)}</div>`;
-    card.innerHTML = h;
+    document.getElementById("fRest").innerHTML = h;
+    renderDiet(date);
   }
+
+  // ---------- 飲食紀錄 ----------
+  // 每月一份:users/{uid}/logs/{YYYY-MM} = {days:{"DD":{meals:[{id,name,kcal,protein,fat?,carbs?}], brunchSkipped, brunchOff?:[itemId]}}}
+  // 不放在主文件。本機一律快取在 localStorage({owner, months}),登入時才同步到 Firestore。
+  // 固定早午餐不寫入紀錄，由 FP.dietDay() 依 startDate 計算；只有「沒吃」才寫 brunchSkipped / brunchOff。
+  const LOGS_KEY = LS_KEY + "-logs";
+  let logStore = readLogs(), logsUnsub = null, logTimer = null, logsSynced = false;
+  const logDirty = new Set();
+  function readLogs(){ try{ const o = JSON.parse(localStorage.getItem(LOGS_KEY)); if(o && o.months && typeof o.months === "object") return o; }catch(e){} return {owner:null, months:{}}; }
+  function writeLogs(){ try{ localStorage.setItem(LOGS_KEY, JSON.stringify(logStore)); }catch(e){} }
+  const monthKeyOf = d => `${d.getFullYear()}-${pad(d.getMonth()+1)}`;
+  function dayLog(date, create){
+    const mk = monthKeyOf(date), dk = pad(date.getDate());
+    let m = logStore.months[mk];
+    if(!m){ if(!create) return {}; m = logStore.months[mk] = {days:{}}; }
+    if(!m.days) m.days = {};
+    let d = m.days[dk];
+    if(!d){ if(!create) return {}; d = m.days[dk] = {meals:[], brunchSkipped:false}; }
+    if(!Array.isArray(d.meals)) d.meals = [];
+    return d;
+  }
+  function saveLog(date){
+    writeLogs();
+    logDirty.add(monthKeyOf(date));
+    if(!logsSynced) return;   // 未登入：只存本機，登入後再上傳
+    clearTimeout(logTimer); logTimer = setTimeout(flushLogs, 600);
+  }
+  function flushLogs(){
+    logTimer = null;
+    const uid = currentUid(); if(!uid || !logsSynced) return;
+    logDirty.forEach(mk=>{
+      const data = JSON.parse(JSON.stringify(logStore.months[mk] || {days:{}}));
+      fb.fsM.setDoc(fb.fsM.doc(fb.db, "users", uid, "logs", mk), data).catch(()=>setStatus("飲食紀錄同步失敗，先存在這個裝置","warn"));
+    });
+    logDirty.clear();
+  }
+  // 登入後訂閱 users/{uid}/logs;第一次拿到伺服器資料時，把本機(未登入時)的紀錄補上去：雲端已有的那天以雲端為準
+  function startLogSync(uid){
+    stopLogSync();
+    logsUnsub = fb.fsM.onSnapshot(fb.fsM.collection(fb.db, "users", uid, "logs"), snap=>{
+      if(logTimer) return;   // 本機還有沒送出的修改
+      const cloud = {}; snap.forEach(d=>{ cloud[d.id] = d.data(); });
+      if(!logsSynced){
+        if(snap.metadata.fromCache) return;   // 等伺服器的資料再合併
+        const mine = logStore.owner === null || logStore.owner === uid;   // 別的帳號留下的紀錄不上傳
+        if(mine) for(const mk in logStore.months){
+          const local = (logStore.months[mk] || {}).days || {};
+          for(const dk in local){
+            const cm = cloud[mk] || (cloud[mk] = {days:{}}); if(!cm.days) cm.days = {};
+            if(!cm.days[dk]){ cm.days[dk] = local[dk]; logDirty.add(mk); }
+          }
+        }
+        logStore = {owner: uid, months: cloud};
+        logsSynced = true;
+        writeLogs();
+        if(logDirty.size) flushLogs();
+        renderToday();
+        return;
+      }
+      if(stableJSON(cloud) !== stableJSON(logStore.months)){ logStore.months = cloud; writeLogs(); renderToday(); }
+    }, ()=>{ logsSynced = false; });
+  }
+  function stopLogSync(){
+    if(logsUnsub){ logsUnsub(); logsUnsub = null; }
+    if(logTimer){ clearTimeout(logTimer); flushLogs(); }
+    logsSynced = false;
+  }
+
+  const fmtN = n => String(Math.round(Number(n || 0) * 10) / 10);
+  const kp = it => `${fmtN(it.kcal)} kcal · ${fmtN(it.protein)} g`;
+  let dietDateKey = null;
+  function renderDiet(date){
+    if(dietDateKey !== ymd(date)){ closeDietForm(); dietDateKey = ymd(date); }   // 換天時關掉表單，免得加到別天
+    const D = FP.dietDay(state.fitness, dayLog(date, false), date), F = state.fitness;
+    const bar = (label, eaten, target, unit) => {
+      const p = target ? Math.min(100, eaten / target * 100) : 0;
+      return `<div class="dbar"><span>${label}</span><div class="meter" role="progressbar" aria-label="${label}" aria-valuemin="0" aria-valuemax="${target || 0}" aria-valuenow="${fmtN(eaten)}"><i class="${target && eaten > target ? "over" : ""}" style="width:${p}%"></i></div><span class="dv">${fmtN(eaten)} / ${target ? fmtN(target) : "—"} ${unit}</span></div>`;
+    };
+    let h = `<div class="dhead"><h3>今日飲食</h3><button class="mini" type="button" data-act="add">＋新增</button></div>`;
+    if(D.targets){
+      h += bar("熱量", D.totals.kcal, D.targets.kcal, "kcal") + bar("蛋白質", D.totals.protein, D.targets.protein, "g");
+      const k = D.left.kcal, pr = D.left.protein;
+      const part = (v, unit, name) => v >= 0 ? `${name}還差 ${fmtN(v)} ${unit}` : `${name}超過 ${fmtN(-v)} ${unit}`;
+      h += `<p class="dleft">${part(k, "kcal", "熱量")}、${part(pr, "g", "蛋白質")}<br><small>脂肪 ${fmtN(D.totals.fat)} g · 碳水 ${fmtN(D.totals.carbs)} g</small></p>`;
+    }
+    if(D.preset && D.auto){
+      h += `<div class="dgroup"><div class="dgh"><b>${esc(D.preset.name)}</b><span class="tag">自動</span><span class="sp"></span>` +
+        `<button class="mini" type="button" data-act="skip">${D.skipped ? "恢復固定早午餐" : "今天沒吃固定早午餐"}</button></div><ul class="dlist">` +
+        D.items.filter(it=>it.auto).map(it=>`<li class="drow${it.off ? " off" : ""}"><span class="dn">${esc(it.name)}${it.source === "tentative" ? ` <span class="tag warn" title="數字還沒確認">暫估</span>` : ""}</span><span class="dk">${kp(it)}</span>` +
+          (D.skipped ? "<span></span>" : `<button class="mini" type="button" data-act="off" data-id="${esc(it.id)}">${it.off ? "有吃" : "沒吃"}</button>`) + `</li>`).join("") + `</ul></div>`;
+    } else if(D.preset && D.start){
+      h += `<p class="dnote">${esc(D.preset.name)}從 ${D.start.getMonth()+1}/${D.start.getDate()} 開始每天自動計入。</p>`;
+    }
+    const meals = D.items.filter(it=>!it.auto);
+    h += `<div class="dgroup"><div class="dgh"><b>其他食物</b></div>` + (meals.length ? `<ul class="dlist">` + meals.map(m=>
+      `<li class="drow"><span class="dn">${esc(m.name)}</span><span class="dk">${kp(m)}</span><span class="acts"><button class="mini" type="button" data-act="edit" data-id="${esc(m.id)}">修改</button><button class="mini del" type="button" data-act="del" data-id="${esc(m.id)}" aria-label="刪除 ${esc(m.name)}">✕</button></span></li>`).join("") + `</ul>`
+      : `<p class="dnote">還沒有其他紀錄。按「＋新增」或點下面的常吃食物。</p>`) + `</div>`;
+    document.getElementById("dietView").innerHTML = h;
+    const foods = F.foods || [];
+    document.getElementById("dietFavs").innerHTML = foods.length ? `<span>常吃：</span>` + foods.map(f=>`<button class="fav" type="button" data-fav="${esc(f.id)}" title="${kp(f)}">＋ ${esc(f.name)}</button>`).join("") : "";
+  }
+
+  function openDietForm(m){
+    const form = document.getElementById("dietForm");
+    document.getElementById("dfId").value = m ? m.id : "";
+    document.getElementById("dfName").value = m ? m.name : "";
+    document.getElementById("dfKcal").value = m ? m.kcal : "";
+    document.getElementById("dfProtein").value = m ? m.protein : "";
+    document.getElementById("dfFat").value = m && m.fat != null ? m.fat : "";
+    document.getElementById("dfCarbs").value = m && m.carbs != null ? m.carbs : "";
+    document.getElementById("dfSubmit").textContent = m ? "儲存" : "加入";
+    form.hidden = false;
+    document.getElementById("dfName").focus();
+  }
+  function closeDietForm(){ document.getElementById("dietForm").hidden = true; }
+  // 輸入過的食物存進常吃清單(同名就更新數字)
+  function rememberFood(m){
+    const foods = state.fitness.foods || (state.fitness.foods = []);
+    const key = m.name.trim().toLowerCase(), hit = foods.find(f=>f.name.trim().toLowerCase() === key);
+    const data = {name:m.name, kcal:m.kcal, protein:m.protein}; if(m.fat != null) data.fat = m.fat; if(m.carbs != null) data.carbs = m.carbs;
+    if(hit){ delete hit.fat; delete hit.carbs; Object.assign(hit, data); } else foods.push(Object.assign({id:"f-" + uid6()}, data));
+    scheduleSave();
+  }
+  document.getElementById("dietForm").addEventListener("submit", e=>{
+    e.preventDefault();
+    const v = id => document.getElementById(id).value.trim();
+    const opt = id => v(id) === "" ? null : Number(v(id));
+    const m = {id: v("dfId") || "m-" + uid6(), name: v("dfName"), kcal: Number(v("dfKcal")), protein: Number(v("dfProtein"))};
+    if(!m.name || !isFinite(m.kcal) || !isFinite(m.protein) || m.kcal < 0 || m.protein < 0) return;
+    const fat = opt("dfFat"), carbs = opt("dfCarbs");
+    if(fat != null && isFinite(fat)) m.fat = fat;
+    if(carbs != null && isFinite(carbs)) m.carbs = carbs;
+    const d = dayLog(sd, true), i = d.meals.findIndex(x=>x.id === m.id);
+    if(i >= 0) d.meals[i] = m; else d.meals.push(m);
+    saveLog(sd); rememberFood(m); closeDietForm(); renderDiet(sd);
+  });
+  document.getElementById("dfCancel").addEventListener("click", closeDietForm);
+  document.getElementById("fDiet").addEventListener("click", e=>{
+    const fav = e.target.closest("[data-fav]");
+    if(fav){
+      const f = (state.fitness.foods || []).find(x=>x.id === fav.dataset.fav); if(!f) return;
+      const m = {id:"m-" + uid6(), name:f.name, kcal:f.kcal, protein:f.protein};
+      if(f.fat != null) m.fat = f.fat; if(f.carbs != null) m.carbs = f.carbs;
+      dayLog(sd, true).meals.push(m); saveLog(sd); renderDiet(sd);
+      return;
+    }
+    const b = e.target.closest("button[data-act]"); if(!b || !b.closest("#dietView")) return;
+    const act = b.dataset.act;
+    if(act === "add"){ openDietForm(null); return; }
+    const d = dayLog(sd, true);
+    if(act === "skip"){ d.brunchSkipped = !d.brunchSkipped; if(!d.brunchSkipped) delete d.brunchOff; }
+    else if(act === "off"){
+      const off = new Set(d.brunchOff || []);
+      off.has(b.dataset.id) ? off.delete(b.dataset.id) : off.add(b.dataset.id);
+      if(off.size) d.brunchOff = [...off]; else delete d.brunchOff;
+    }
+    else if(act === "edit"){ const m = d.meals.find(x=>x.id === b.dataset.id); if(m) openDietForm(m); return; }
+    else if(act === "del"){
+      if(!b.classList.contains("armed")){ b.classList.add("armed"); b.textContent = "確定"; setTimeout(()=>{ if(b.isConnected){ b.classList.remove("armed"); b.textContent = "✕"; } }, 3000); return; }
+      d.meals = d.meals.filter(x=>x.id !== b.dataset.id);
+    } else return;
+    saveLog(sd); renderDiet(sd);
+  });
   document.getElementById("fSum").addEventListener("click", ()=>{
     const c = document.getElementById("fCard");
     c.scrollIntoView({behavior: reduceMotion() ? "auto" : "smooth", block: "start"});
@@ -838,8 +1070,50 @@ thead .frow .ft-run{color:var(--accent);font-weight:700}
     const inp = document.getElementById("fitStart");
     if(document.activeElement !== inp) inp.value = F.startDate || "";
     if(!document.getElementById("remList").contains(document.activeElement)) renderReminders();   // 正在改提醒時不重畫，免得游標跑掉
+    if(!document.querySelector(".presets").contains(document.activeElement)) renderPresets();
     renderPush();
   }
+  // 固定早午餐(state.fitness.presets[0]):每個項目可以改數字和來源標記
+  function renderPresets(){
+    const p = (state.fitness.presets || [])[0];
+    document.getElementById("presetName").value = p ? p.name : "";
+    document.getElementById("presetItems").innerHTML = p ? (p.items || []).map(it=>`
+      <div class="prow" data-id="${esc(it.id)}">
+        <label class="pname"><span>項目</span><input data-f="name" value="${esc(it.name)}" maxlength="40"></label>
+        ${[["kcal","熱量 kcal"],["protein","蛋白質 g"],["fat","脂肪 g"],["carbs","碳水 g"]].map(([k,l])=>`<label><span>${l}</span><input data-f="${k}" type="number" inputmode="decimal" min="0" step="any" value="${it[k] ?? ""}"></label>`).join("")}
+        <label class="psrc"><span>來源</span><select data-f="source">${Object.entries(FP.FOOD_SOURCES).map(([k,v])=>`<option value="${k}"${k === it.source ? " selected" : ""}>${v}</option>`).join("")}</select></label>
+        <button class="icon del" type="button" data-act="pdel" aria-label="刪除 ${esc(it.name)}">✕</button>
+      </div>`).join("") : "";
+  }
+  const presetItem = el => { const row = el.closest(".prow"), p = (state.fitness.presets || [])[0]; return row && p && (p.items || []).find(x=>x.id === row.dataset.id); };
+  document.getElementById("presetName").addEventListener("change", e=>{
+    const p = (state.fitness.presets || [])[0]; if(!p) return;
+    p.name = e.target.value.trim() || "固定早午餐"; render(); scheduleSave();
+  });
+  document.getElementById("presetItems").addEventListener("change", e=>{
+    const it = presetItem(e.target); if(!it) return;
+    const f = e.target.dataset.f, v = e.target.value.trim();
+    if(f === "name") it.name = v || "未命名";
+    else if(f === "source") it.source = v;
+    else if(["kcal","protein","fat","carbs"].includes(f)){ const n = Number(v); if(v === "" || !isFinite(n) || n < 0) return; it[f] = n; }
+    else return;
+    render(); scheduleSave();
+  });
+  document.getElementById("presetItems").addEventListener("click", e=>{
+    const b = e.target.closest("button[data-act=pdel]"); if(!b) return;
+    if(!b.classList.contains("armed")){ b.classList.add("armed"); b.textContent = "確定刪除"; setTimeout(()=>{ if(b.isConnected){ b.classList.remove("armed"); b.textContent = "✕"; } }, 3000); return; }
+    const p = state.fitness.presets[0], it = presetItem(b);
+    p.items = p.items.filter(x=>x !== it);
+    renderPresets(); render(); scheduleSave();
+  });
+  document.getElementById("presetAdd").addEventListener("click", ()=>{
+    const ps = state.fitness.presets || (state.fitness.presets = []);
+    if(!ps[0]) ps.push({id:"brunch", name:"固定早午餐", items:[]});
+    const it = {id:"p-" + uid6(), name:"新項目", kcal:0, protein:0, fat:0, carbs:0, source:"estimate"};
+    ps[0].items.push(it);
+    renderPresets(); render(); scheduleSave();
+    const inp = document.querySelector(`.prow[data-id="${it.id}"] input[data-f=name]`); if(inp){ inp.focus(); inp.select(); }
+  });
   document.getElementById("fitStart").addEventListener("change", e=>{
     const t = parseYMD(e.target.value);
     document.getElementById("fitErr").textContent = t ? "" : "請選一個有效的日期。";
@@ -1003,7 +1277,8 @@ thead .frow .ft-run{color:var(--accent);font-weight:700}
 
   // ---------- backup ----------
   document.getElementById("exportBtn").addEventListener("click", ()=>{
-    const blob = new Blob([JSON.stringify(state, null, 2)], {type:"application/json"});
+    // 飲食紀錄不在主文件裡，匯出時另外放在 logs:{"YYYY-MM":{days:{...}}}
+    const blob = new Blob([JSON.stringify({...state, logs: logStore.months}, null, 2)], {type:"application/json"});
     const a = document.createElement("a");
     const d = new Date();
     a.href = URL.createObjectURL(blob);
@@ -1017,8 +1292,14 @@ thead .frow .ft-run{color:var(--accent);font-weight:700}
       const o = JSON.parse(await f.text());
       if(!o || !Array.isArray(o.habits) || typeof o.checks !== "object") throw new Error("bad");
       // 保留 fitness 等其他欄位；舊備份沒有 fitness 時補上預設計畫
-      state = {...o, checks:o.checks||{}};
+      const {logs, ...rest} = o;   // logs 存在子集合，不能放進主文件
+      state = {...rest, checks:o.checks||{}};
       ensureFitness(state);
+      if(logs && typeof logs === "object"){
+        for(const mk in logs){ if(/^\d{4}-\d{2}$/.test(mk) && logs[mk] && typeof logs[mk] === "object"){ logStore.months[mk] = logs[mk]; logDirty.add(mk); } }
+        writeLogs();
+        if(logsSynced) flushLogs();
+      }
       renderEditor(); render(); scheduleSave();
       if(!document.getElementById("fitSettings").hidden) renderFitSettings();
       setStatus("已匯入備份","ok");
@@ -1055,6 +1336,7 @@ thead .frow .ft-run{color:var(--accent);font-weight:700}
       $("authBox").hidden = true; $("loginBtn").hidden = true;
       $("acctInfo").hidden = false; $("acctEmail").textContent = user.email || "已登入";
       ref = fb.fsM.doc(fb.db, "users", user.uid);
+      startLogSync(user.uid);
       // 這台裝置之前開過通知：更新 lastSeen,token 換了也會順便換掉
       const pr = readPushLocal();
       if(pushSupported() && Notification.permission === "granted" && pr && pr.uid === user.uid) registerDevice().catch(()=>{});
@@ -1088,6 +1370,7 @@ thead .frow .ft-run{color:var(--accent);font-weight:700}
       }, ()=>{ mode = "local"; setStatus("無法同步，資料先存在這個裝置","warn"); });
     }else{
       mode = "local"; ref = null;
+      stopLogSync();
       $("acctInfo").hidden = true; $("loginBtn").hidden = false;
       setStatus("未登入：資料只存在這個裝置");
     }

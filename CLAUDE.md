@@ -15,7 +15,13 @@
      tips:{lift, dinner:[3 句], sundayCheck, sundayMeasure, weekendMeal}}
   - sessions 只存標準週課表(第 2、4 週),各週差異寫在 weeks[n].adjust,由 fitnessDay() 顯示時套用，不要複製四份課表。第 29–30 天算第 4 週，範圍外照 standardWeek 顯示
   - fitness.reminders:[{id, time:"HH:MM", days:[0-6], type:"morning"|"preworkout"|"dinner"|"night"|"weekly", enabled}],時間固定是 Asia/Taipei
+  - fitness.presets:[{id:"brunch", name:"固定早午餐", items:[{id, name, kcal, protein, fat, carbs, source:"label"|"estimate"|"tentative"}]}],目前只用第一個。從 startDate 起每天自動計入，不寫入紀錄(FP.dietDay() 計算)
+  - fitness.foods:常吃清單 [{id, name, kcal, protein, fat?, carbs?}],新增食物時自動存(同名更新)
   - 匯入備份要保留 habits/checks 以外的欄位
+- 飲食紀錄不放主文件：users/{uid}/logs/{YYYY-MM} = {days:{"DD":{meals:[{id, name, kcal, protein, fat?, carbs?}], brunchSkipped:bool, brunchOff?:[presetItemId]}}}
+  - brunchSkipped:那天整份固定早午餐沒吃；brunchOff:只取消其中幾項。都沒寫就代表照常吃
+  - 本機快取在 localStorage「habit-grid-v1-logs」= {owner:uid|null, months:{"YYYY-MM":{days}}}。未登入只存本機；登入後第一次拿到伺服器資料時，把雲端沒有的天數補上去(雲端已有的那天以雲端為準；別的帳號留下的不上傳)
+  - 匯出備份多一個 logs:{"YYYY-MM":{days}},匯入時拿出來寫回子集合，不能放進主文件
 - 網址加 ?today=YYYY-MM-DD 會把那天當作今天(測試用),所有「今天」都要用 today0() 取得
 - fitness-plan.js:健身計畫的共用邏輯(DEFAULT_FITNESS、ensureFitness、fitnessDay、reminderMessage、taipeiParts),瀏覽器用 window.FitnessPlan,Node 用 import。App 和推播腳本共用，不要在 index.html 另寫一份
 
