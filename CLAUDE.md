@@ -3,7 +3,19 @@
 個人習慣追蹤網頁 App,部署在 GitHub Pages:https://chen-0121.github.io/habit-grid/
 
 - 純 HTML/CSS/JS,沒有 build 流程。主程式全部在 index.html
-- 資料同步用 Firebase(Auth + Firestore),每人一份文件 users/{uid},格式 {habits:[{id,name,goal}], checks:{"YYYY-MM":{habitId:[日期數字]}}}
+- 資料同步用 Firebase(Auth + Firestore),每人一份文件 users/{uid},格式 {habits:[{id,name,goal,days?}], checks:{"YYYY-MM":{habitId:[日期數字]}}, fitness:{...}}
+  - habits[].days 可省略：[0-6](0=週日),只在這幾天要做；沒有 days 視為每天
+  - fitness 是 30 天健身衝刺計畫(只有計畫與顯示，還沒有每日紀錄)。舊資料沒有 fitness 時，ensureFitness() 會用 DEFAULT_FITNESS 補上並存回去。格式：
+    {status:"active", source:"user_confirmed", confirmedAt:"YYYY-MM-DD", name, startDate:"YYYY-MM-DD", lengthDays:30, standardWeek:"2",
+     weeklySteps, dailyTask,
+     dayTypes:{lift|run|rest:{label,kcal,protein,fat,carbs,steps}},
+     schedule:{"0"-"6":sessionKey}  // key 是 getDay()
+     sessions:{chest|run|back|legs|rest:{type:"lift"|"run"|"rest", short, brief, title, note?, exercises:[{id,name,sets,reps,rest}]}},
+     weeks:{"1"-"4":{reserve:"保留幾下", adjust:[{session, ex:exerciseId, sets?, skip?}]}},
+     tips:{lift, dinner:[3 句], sundayCheck, sundayMeasure, weekendMeal}}
+  - sessions 只存標準週課表(第 2、4 週),各週差異寫在 weeks[n].adjust,由 fitnessDay() 顯示時套用，不要複製四份課表。第 29–30 天算第 4 週，範圍外照 standardWeek 顯示
+  - 匯入備份要保留 habits/checks 以外的欄位
+- 網址加 ?today=YYYY-MM-DD 會把那天當作今天(測試用),所有「今天」都要用 today0() 取得
 - 未登入時資料存在 localStorage
 - firebase-config.js 是前端公開設定，不要刪
 - sw.js 負責離線快取；新增檔案時要加進 SHELL 清單

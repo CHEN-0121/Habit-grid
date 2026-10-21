@@ -168,6 +168,44 @@ table{min-width:100%}
 td.off .rest{color:var(--line-strong)}
 .trest{padding:12px 14px;font-size:13px;color:var(--muted)}
 
+/* fitness plan */
+.today-wrap{display:grid;grid-template-columns:minmax(0,1fr);gap:16px;align-items:start}
+@media (min-width:900px){.today-wrap{grid-template-columns:minmax(0,560px) minmax(0,640px)}}
+.fsum{display:block;width:100%;text-align:left;border:0;border-top:1px solid var(--line);background:var(--accent-soft);color:var(--ink);padding:10px 14px;font-size:13px;line-height:1.5}
+.fsum::after{content:" · 看課表 ›";color:var(--accent);font-weight:700}
+.fcard{background:var(--sheet);border:1px solid var(--line-strong);border-radius:8px;padding:16px;display:flex;flex-direction:column;gap:12px;max-width:560px;width:100%;scroll-margin-top:12px}
+@media (min-width:900px){.fcard{max-width:none}}
+.fcard:focus{outline:none}
+.fhead{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:flex-start;gap:6px 12px}
+.fhead .fk{font-size:12px;color:var(--muted);letter-spacing:.06em}
+.fhead h2{margin:2px 0 0;font-family:var(--f-display);font-size:20px}
+.ftype{margin:0;font-size:13px;color:var(--muted)}
+.fmacro{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:1px;background:var(--line);border:1px solid var(--line);border-radius:6px;overflow:hidden;margin:0}
+.fmacro div{background:var(--bg);padding:8px 10px;min-width:0}
+.fmacro dt{font-size:11px;color:var(--muted)}
+.fmacro dd{margin:0;font-family:var(--f-num);font-size:17px;font-weight:600;white-space:nowrap}
+.fmacro dd small{font-size:11px;color:var(--muted);font-weight:400}
+@media (max-width:420px){.fmacro{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.fline{margin:0;font-size:13px}
+.fnote{margin:0;font-size:13px;padding:8px 10px;border-left:3px solid var(--accent);background:var(--bg);border-radius:0 6px 6px 0}
+.fex{list-style:none;margin:0;padding:0;counter-reset:ex}
+.fex li{counter-increment:ex;display:grid;grid-template-columns:1.6em minmax(0,1fr) auto;gap:0 8px;align-items:baseline;padding:8px 0;border-top:1px solid var(--line);font-size:14px}
+.fex li::before{content:counter(ex) ".";font-family:var(--f-num);font-size:12px;color:var(--muted)}
+.fex .fs{font-family:var(--f-num);font-weight:600;white-space:nowrap}
+.fex .fr{grid-column:2/-1;font-size:12px;color:var(--muted)}
+.fex .adj{font-size:11px;color:var(--accent);margin-left:6px;font-weight:500;white-space:nowrap}
+.fex li.skip .fn,.fex li.skip .fs{text-decoration:line-through;color:var(--muted)}
+.ftip{font-size:13px;padding:10px 12px;border:1px solid var(--line);border-radius:6px;background:var(--bg)}
+.ftip b{display:block;font-size:12px;color:var(--accent);margin-bottom:2px}
+.ftip ol{margin:0;padding-left:1.3em}
+.fset{display:flex;align-items:center;gap:10px;font-size:13px}
+.fset input{font:inherit;color:inherit;background:var(--bg);border:1px solid var(--line-strong);border-radius:6px;padding:7px 10px}
+.testday{font-size:12px;padding:2px 8px;border-radius:999px;background:var(--today);color:var(--ink)}
+thead .frow th{font-size:11px;padding:3px 0;background:var(--sheet);color:var(--muted)}
+thead .frow .stick{background:var(--sheet);font-weight:700;color:var(--ink);padding:3px 10px}
+thead .frow .ft-lift{color:var(--ink);font-weight:700}
+thead .frow .ft-run{color:var(--accent);font-weight:700}
+
 /* month replay */
 .rpbar{position:sticky;top:8px;z-index:6;display:flex;flex-wrap:wrap;align-items:center;gap:8px 10px;background:var(--sheet);border:1px solid var(--accent);border-radius:8px;padding:8px 12px;box-shadow:0 4px 14px rgba(0,0,0,.12)}
 .rp-title{font-size:13px;color:var(--accent);font-weight:700}
@@ -223,6 +261,7 @@ td.off .rest{color:var(--line-strong)}
   <div class="toolbar">
     <div class="acct">
       <span class="status" id="status">載入中…</span>
+      <span class="testday" id="testDay" hidden></span>
       <span id="acctInfo" hidden>· <b id="acctEmail"></b> <button class="linkbtn" id="logout">登出</button></span>
       <button class="btn" id="loginBtn" hidden>登入以同步手機與電腦</button>
     </div>
@@ -232,6 +271,7 @@ td.off .rest{color:var(--line-strong)}
         <button id="vMonth" aria-pressed="false">整月表格</button>
       </div>
       <button class="btn" id="toggleEdit" aria-expanded="false">編輯習慣</button>
+      <button class="btn" id="toggleFit" aria-expanded="false" aria-controls="fitSettings">健身計畫</button>
     </div>
   </div>
 
@@ -249,14 +289,25 @@ td.off .rest{color:var(--line-strong)}
     <div class="err" id="authErr" role="alert"></div>
   </section>
 
-  <section class="today" id="todayView" hidden aria-label="單日打卡">
+  <div class="today-wrap" id="todayView" hidden>
+  <section class="today" aria-label="單日打卡">
     <div class="today-head">
       <button class="btn" id="dPrev" aria-label="前一天">‹</button>
       <div class="today-mid"><strong id="dLabel">—</strong><div class="count" id="dCount"></div><div class="meter" role="progressbar" aria-label="當日完成率" aria-valuemin="0" aria-valuemax="100" id="dMeter"><i></i></div></div>
       <button class="btn" id="dNext" aria-label="後一天">›</button>
     </div>
+    <button class="fsum" id="fSum" type="button" hidden></button>
     <ul class="tlist" id="tlist"></ul>
     <div class="today-foot">完整的每日長條圖、每週進度與各習慣達成率，切到「整月表格」查看(電腦螢幕最清楚)。</div>
+  </section>
+  <aside class="fcard" id="fCard" aria-label="今日課表" tabindex="-1" hidden></aside>
+  </div>
+
+  <section class="editor" id="fitSettings" hidden aria-label="健身計畫設定">
+    <h2>健身計畫</h2>
+    <p id="fitInfo"></p>
+    <label class="fset"><span>開始日期</span><input type="date" id="fitStart" required></label>
+    <p class="err" id="fitErr" role="alert"></p>
   </section>
 
   <section class="editor" id="editor" hidden>
@@ -308,6 +359,94 @@ td.off .rest{color:var(--line-strong)}
   const esc = s => String(s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
   const pad = n => String(n).padStart(2,"0");
   const stableJSON = v => JSON.stringify(v, (k,x)=> x && typeof x === "object" && !Array.isArray(x) ? Object.keys(x).sort().reduce((o,kk)=>(o[kk]=x[kk], o), {}) : x);
+  const parseYMD = s => { const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(s || ""); if(!m) return null; const t = new Date(+m[1], +m[2]-1, +m[3]); return t.getMonth() === +m[2]-1 ? t : null; };
+  const ymd = t => `${t.getFullYear()}-${pad(t.getMonth()+1)}-${pad(t.getDate())}`;
+  // 網址加 ?today=2026-10-28 時把那天當作今天(測試用)
+  const TODAY_PARAM = parseYMD(new URLSearchParams(location.search).get("today"));
+  const today0 = () => { if(TODAY_PARAM) return new Date(TODAY_PARAM); const t = new Date(); t.setHours(0,0,0,0); return t; };
+
+  // ---------- 30 天健身衝刺計畫(state.fitness) ----------
+  // 課表只存標準週(第 2、4 週),各週差異寫在 weeks[n].adjust,顯示時才套用
+  const DEFAULT_FITNESS = {
+    status:"active", source:"user_confirmed", confirmedAt:"2026-10-22",
+    name:"30 天健身衝刺", startDate:"2026-10-26", lengthDays:30, standardWeek:"2",
+    weeklySteps:"55000–60000",
+    dailyTask:"起床上完廁所後量體重",
+    dayTypes:{
+      lift:{label:"重訓日", kcal:2200, protein:160, fat:60, carbs:255, steps:"6000–7000"},
+      run:{label:"跑步日", kcal:2100, protein:160, fat:60, carbs:230, steps:"10000"},
+      rest:{label:"休息日", kcal:2000, protein:160, fat:60, carbs:205, steps:"10000 以上"}
+    },
+    schedule:{"0":"rest","1":"chest","2":"run","3":"back","4":"run","5":"legs","6":"rest"},   // key = getDay()
+    sessions:{
+      chest:{type:"lift", short:"胸", brief:"胸肩三頭", title:"胸＋肩＋三頭＋腹", note:"順序不可調換，胸一定要先練", exercises:[
+        {id:"bench", name:"槓鈴平板臥推", sets:3, reps:"6–8", rest:"2–3 分"},
+        {id:"incline-db", name:"上斜啞鈴臥推", sets:3, reps:"8–12", rest:"2 分"},
+        {id:"pec-deck", name:"蝴蝶機夾胸", sets:2, reps:"12–15", rest:"90 秒"},
+        {id:"lateral", name:"側平舉", sets:3, reps:"12–20", rest:"60 秒"},
+        {id:"db-press", name:"啞鈴肩推", sets:2, reps:"8–12", rest:"90 秒"},
+        {id:"pushdown", name:"繩索三頭下壓", sets:3, reps:"10–15", rest:"60 秒"},
+        {id:"cable-crunch", name:"繩索捲腹", sets:3, reps:"10–15", rest:"60 秒"}]},
+      run:{type:"run", short:"跑", brief:"5 km 輕鬆跑", title:"5 km 輕鬆跑", note:"配速約 6:30–7:00/km,以跑的時候能講話為準", exercises:[]},
+      back:{type:"lift", short:"背", brief:"背二頭", title:"背＋二頭＋腹", exercises:[
+        {id:"pulldown", name:"滑輪下拉", sets:3, reps:"8–12", rest:"2 分"},
+        {id:"chest-row", name:"胸靠式划船", sets:3, reps:"8–12", rest:"2 分"},
+        {id:"seated-row", name:"坐姿划船", sets:2, reps:"10–12", rest:"90 秒"},
+        {id:"reverse-fly", name:"反向飛鳥", sets:2, reps:"12–20", rest:"60 秒"},
+        {id:"db-curl", name:"啞鈴彎舉(左右分開)", sets:3, reps:"10–12", rest:"60 秒"},
+        {id:"hammer", name:"槌式彎舉", sets:2, reps:"10–15", rest:"60 秒"},
+        {id:"knee-raise", name:"懸垂屈膝抬腿", sets:3, reps:"10–15", rest:"60 秒"},
+        {id:"cable-crunch", name:"繩索捲腹", sets:2, reps:"10–15", rest:"60 秒"}]},
+      legs:{type:"lift", short:"腿胸", brief:"腿胸", title:"下肢＋胸＋腹", exercises:[
+        {id:"squat", name:"深蹲", sets:3, reps:"6–10", rest:"2–3 分"},
+        {id:"rdl", name:"羅馬尼亞硬舉", sets:3, reps:"8–10", rest:"2 分"},
+        {id:"leg-press", name:"腿推", sets:2, reps:"10–12", rest:"2 分"},
+        {id:"leg-curl", name:"腿彎舉", sets:2, reps:"10–15", rest:"90 秒"},
+        {id:"incline-machine", name:"上斜機械胸推", sets:4, reps:"8–12", rest:"2 分"},
+        {id:"ab-wheel", name:"健腹輪", sets:3, reps:"6–12", rest:"60 秒"}]},
+      rest:{type:"rest", short:"休", brief:"休息", title:"休息", note:"走路達到步數", exercises:[]}
+    },
+    weeks:{
+      "1":{reserve:"2–3", adjust:[
+        {session:"chest", ex:"cable-crunch", sets:2},
+        {session:"back", ex:"knee-raise", sets:2}, {session:"back", ex:"cable-crunch", skip:true},
+        {session:"legs", ex:"incline-machine", sets:2}, {session:"legs", ex:"ab-wheel", sets:2}]},
+      "2":{reserve:"1–2", adjust:[]},
+      "3":{reserve:"1–2", adjust:[{session:"chest", ex:"bench", sets:4}, {session:"chest", ex:"pec-deck", sets:3}]},
+      "4":{reserve:"1–2", adjust:[]}
+    },
+    tips:{
+      lift:"每一組都做到次數上限，下次槓鈴加 2.5 kg、啞鈴每邊加 1–2 kg。第 1 週先找出每個動作的起始重量",
+      dinner:["蛋白質一份要夠，一個手掌大、一根手指厚，雞腿、雞胸、魚或豬里肌，熟重 150–200 g",
+              "飯 1–1.5 碗，練腿或跑步日 1.5 碗，休息日 1 碗",
+              "蔬菜至少兩樣，選滷、烤、蒸，不選炸"],
+      sundayCheck:"週平均體重下降 0.4–0.8 kg 且腰圍變小 → 維持;下降不到 0.3 kg → 每天多走 2000 步;下降超過 1 kg(第 1 週除外)或力量退步 → 每天加 150 kcal",
+      sundayMeasure:"早上量腰圍(肚臍那一圈)、拍正面和側面照",
+      weekendMeal:"週末其中一餐是放縱餐，不算熱量，吃到七八分飽"
+    }
+  };
+  // 舊資料沒有 fitness 時補上預設計畫；回傳 true 代表有補，呼叫端要存檔
+  function ensureFitness(s){
+    if(s.fitness && typeof s.fitness === "object" && s.fitness.sessions) return false;
+    s.fitness = JSON.parse(JSON.stringify(DEFAULT_FITNESS));
+    return true;
+  }
+  // 某一天的課表：第幾天/第幾週、類型、營養目標、套用該週調整後的動作
+  function fitnessDay(date){
+    const F = state.fitness, start = F && parseYMD(F.startDate); if(!start) return null;
+    const len = F.lengthDays || 30;
+    const day = Math.round((Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()) - Date.UTC(start.getFullYear(), start.getMonth(), start.getDate())) / 864e5) + 1;
+    const phase = day < 1 ? "before" : day > len ? "after" : "active";
+    const week = phase === "active" ? Math.min(4, Math.ceil(day/7)) : null;   // 第 29–30 天算第 4 週
+    const wk = F.weeks[String(week || F.standardWeek)] || {};
+    const key = F.schedule[String(date.getDay())], s = F.sessions[key]; if(!s) return null;
+    const exercises = (s.exercises || []).map(e=>{
+      const x = {...e};
+      (wk.adjust || []).forEach(a=>{ if(a.session === key && a.ex === e.id){ if(a.skip) x.skip = true; if(a.sets){ x.from = e.sets; x.sets = a.sets; } } });
+      return x;
+    });
+    return {phase, day, len, week, key, s, type: F.dayTypes[s.type] || {}, exercises, reserve: wk.reserve, dow: date.getDay(), start};
+  }
 
   // 只在固定星期做的習慣存 days:[0-6](0=週日);舊資料沒有 days,視為每天都要做
   const WEEK = [1,2,3,4,5,6,0];   // 編輯器從週一排到週日
@@ -348,11 +487,11 @@ td.off .rest{color:var(--line-strong)}
   let mode = "local";       // "cloud" | "local"
   let ref = null;           // db doc ref
   let saveTimer = null, saving = false, dirtyAgain = false;
-  const now = new Date();
+  const now = today0();
   let vy = now.getFullYear(), vm = now.getMonth();
 
   function freshState(){
-    return {habits: DEFAULT_HABITS.map(h=>({id:uid6(), ...JSON.parse(JSON.stringify(h))})), checks:{}};
+    return {habits: DEFAULT_HABITS.map(h=>({id:uid6(), ...JSON.parse(JSON.stringify(h))})), checks:{}, fitness: JSON.parse(JSON.stringify(DEFAULT_FITNESS))};
   }
   function readLocal(){
     try{ const s = localStorage.getItem(LS_KEY); if(s){ const o = JSON.parse(s); if(o && Array.isArray(o.habits)) return o; } }catch(e){}
@@ -399,7 +538,7 @@ td.off .rest{color:var(--line-strong)}
     const days = new Date(vy, vm+1, 0).getDate();
     const habits = state.habits;
     const mc = mcOf(vy, vm);
-    const today = new Date(); today.setHours(0,0,0,0);
+    const today = today0();
     const isFuture = d => new Date(vy,vm,d) > today;
     const hideSum = d => isFuture(d) || (!!RP && d > RP.doneDay);   // 回放還沒播到的天，統計列先留白
     const isToday = d => vy===today.getFullYear() && vm===today.getMonth() && d===today.getDate();
@@ -424,7 +563,15 @@ td.off .rest{color:var(--line-strong)}
     for(let d=1; d<=days; d++) html += `<th class="dow ${dc(d)}">${DOW[new Date(vy,vm,d).getDay()]}</th>`;
     html += "</tr><tr>";
     for(let d=1; d<=days; d++) html += `<th class="dnum ${dc(d)}">${d}</th>`;
-    html += "</tr></thead>";
+    html += "</tr>";
+    // 健身衝刺課表列：只標 30 天範圍內的日子，這個月完全不在範圍內就不顯示
+    const fds = []; for(let d=1; d<=days; d++){ const f = fitnessDay(new Date(vy,vm,d)); fds[d] = f && f.phase === "active" ? f : null; }
+    if(fds.some(Boolean)){
+      html += "<tr class='frow'><th class='stick'>健身課表</th>";
+      for(let d=1; d<=days; d++){ const f = fds[d]; html += `<th class="${dc(d)}${f ? " ft-"+f.s.type : ""}"${f ? ` title="第 ${f.day} 天 · ${esc(f.s.title)}"` : ""}>${f ? esc(f.s.short) : ""}</th>`; }
+      html += "<th class='tot'></th></tr>";
+    }
+    html += "</thead>";
 
     // summary block
     html += "<tbody class='summary'>";
@@ -663,7 +810,6 @@ td.off .rest{color:var(--line-strong)}
   });
 
   // ---------- single-day (phone) view ----------
-  const today0 = () => { const t = new Date(); t.setHours(0,0,0,0); return t; };
   let sd = today0();
   function toggleCheck(y, m, hid, d){
     const k = `${y}-${pad(m+1)}`;
@@ -689,7 +835,77 @@ td.off .rest{color:var(--line-strong)}
     document.getElementById("dCount").textContent = todo.length ? `完成 ${n} / ${todo.length} · ${rate}%` : "今天沒有要做的事";
     const dm = document.getElementById("dMeter");
     dm.setAttribute("aria-valuenow", rate); dm.firstElementChild.style.width = rate + "%";
+    renderFitness(sd);
   }
+
+  // ---------- 今日課表卡片 ----------
+  function renderFitness(date){
+    const card = document.getElementById("fCard"), sum = document.getElementById("fSum");
+    const f = fitnessDay(date), F = state.fitness;
+    card.hidden = sum.hidden = !f;
+    if(!f) return;
+    const T = f.type, md = `${date.getMonth()+1}/${date.getDate()}`;
+    const where = f.phase === "active" ? `第 ${f.day} 天 · 第 ${f.week} 週`
+      : f.phase === "before" ? `衝刺倒數 ${1 - f.day} 天` : "衝刺已結束";
+    sum.textContent = `${where} · ${f.s.brief} · ${T.kcal} kcal`;
+
+    const badge = f.phase === "active" ? `第 ${f.day} / ${f.len} 天 · 第 ${f.week} 週`
+      : f.phase === "before" ? `還有 ${1 - f.day} 天開始(${f.start.getMonth()+1}/${f.start.getDate()})` : "衝刺已結束";
+    let h = `<div class="fhead"><div><span class="fk">${esc(F.name || "健身衝刺")} · ${md}(${DOW[f.dow]})</span><h2>${esc(f.s.title)}</h2></div>` +
+      `<span class="badge${f.phase === "active" ? " closed" : ""}">${badge}</span></div>`;
+    if(f.phase !== "active") h += `<p class="ftype">${f.phase === "before" ? "還沒開始" : "30 天已經結束"},以下照標準週(第 ${F.standardWeek} 週)顯示課表。</p>`;
+    h += `<p class="ftype">${esc(T.label || "")}${f.s.type === "lift" && f.reserve ? ` · 每組保留 ${esc(f.reserve)} 下` : ""}</p>`;
+    h += `<dl class="fmacro">` +
+      `<div><dt>熱量</dt><dd>${T.kcal}<small> kcal</small></dd></div>` +
+      `<div><dt>蛋白質</dt><dd>${T.protein}<small> g</small></dd></div>` +
+      `<div><dt>脂肪</dt><dd>${T.fat}<small> g</small></dd></div>` +
+      `<div><dt>碳水</dt><dd>${T.carbs}<small> g</small></dd></div></dl>`;
+    h += `<p class="fline">👣 步數目標 <b>${esc(T.steps || "")}</b>(每週 ${esc(F.weeklySteps || "")})</p>`;
+    if(F.dailyTask) h += `<p class="fline">⚖️ ${esc(F.dailyTask)}</p>`;
+    if(f.s.note) h += `<p class="fnote">${esc(f.s.note)}</p>`;
+    if(f.exercises.length){
+      h += `<ol class="fex">` + f.exercises.map(e=>`<li class="${e.skip ? "skip" : ""}"><span class="fn">${esc(e.name)}${e.skip ? `<span class="adj">本週不做</span>` : e.from ? `<span class="adj">本週 ${e.from}→${e.sets} 組</span>` : ""}</span>` +
+        `<span class="fs">${e.sets}×${esc(e.reps)}</span><span class="fr">休息 ${esc(e.rest)}</span></li>`).join("") + `</ol>`;
+    }
+    const tips = F.tips || {};
+    if(f.dow === 0 && tips.sundayMeasure) h += `<div class="ftip"><b>週日量測</b>${esc(tips.sundayMeasure)}</div>`;
+    if((f.dow === 0 || f.dow === 6) && tips.weekendMeal) h += `<div class="ftip"><b>放縱餐</b>${esc(tips.weekendMeal)}</div>`;
+    if(f.s.type === "lift" && tips.lift) h += `<div class="ftip"><b>加重量規則</b>${esc(tips.lift)}</div>`;
+    if(Array.isArray(tips.dinner)) h += `<div class="ftip"><b>晚餐三件事</b><ol>${tips.dinner.map(t=>`<li>${esc(t)}</li>`).join("")}</ol></div>`;
+    if(f.dow === 0 && tips.sundayCheck) h += `<div class="ftip"><b>每週檢查</b>${esc(tips.sundayCheck)}</div>`;
+    card.innerHTML = h;
+  }
+  document.getElementById("fSum").addEventListener("click", ()=>{
+    const c = document.getElementById("fCard");
+    c.scrollIntoView({behavior: reduceMotion() ? "auto" : "smooth", block: "start"});
+    c.focus({preventScroll:true});
+  });
+
+  // ---------- 健身計畫設定 ----------
+  function renderFitSettings(){
+    const F = state.fitness, start = parseYMD(F.startDate);
+    const end = start && new Date(start.getFullYear(), start.getMonth(), start.getDate() + (F.lengthDays || 30) - 1);
+    const STATUS = {active:"進行中"}, SOURCE = {user_confirmed:"使用者確認"};
+    document.getElementById("fitInfo").textContent =
+      `${F.name || "健身衝刺"}:共 ${F.lengthDays || 30} 天、4 週${end ? `,${F.startDate} 到 ${ymd(end)}` : ""}。` +
+      `狀態：${STATUS[F.status] || F.status || "—"} · 來源：${SOURCE[F.source] || F.source || "—"} · 確認日期 ${F.confirmedAt || "—"}`;
+    const inp = document.getElementById("fitStart");
+    if(document.activeElement !== inp) inp.value = F.startDate || "";
+  }
+  document.getElementById("fitStart").addEventListener("change", e=>{
+    const t = parseYMD(e.target.value);
+    document.getElementById("fitErr").textContent = t ? "" : "請選一個有效的日期。";
+    if(!t) return;
+    state.fitness.startDate = ymd(t);
+    renderFitSettings(); render(); scheduleSave();
+  });
+  document.getElementById("toggleFit").addEventListener("click", e=>{
+    const p = document.getElementById("fitSettings"); p.hidden = !p.hidden;
+    e.currentTarget.setAttribute("aria-expanded", String(!p.hidden));
+    e.currentTarget.textContent = p.hidden ? "健身計畫" : "完成設定";
+    if(!p.hidden) renderFitSettings();
+  });
+  if(TODAY_PARAM){ const b = document.getElementById("testDay"); b.hidden = false; b.textContent = `測試日期：${ymd(TODAY_PARAM)}`; }
   document.getElementById("tlist").addEventListener("click", e=>{
     const b = e.target.closest("button[data-h]"); if(!b) return;
     toggleCheck(sd.getFullYear(), sd.getMonth(), b.dataset.h, sd.getDate());
@@ -830,6 +1046,7 @@ td.off .rest{color:var(--line-strong)}
 
   // ---------- boot ----------
   state = readLocal() || freshState();
+  if(ensureFitness(state)) writeLocal();
   render();
   let savedView = null; try{ savedView = localStorage.getItem(LS_KEY+"-view"); }catch(e){}
   setView(savedView === "today" || savedView === "month" ? savedView : (window.innerWidth < 760 ? "today" : "month"));
@@ -850,8 +1067,11 @@ td.off .rest{color:var(--line-strong)}
     try{
       const o = JSON.parse(await f.text());
       if(!o || !Array.isArray(o.habits) || typeof o.checks !== "object") throw new Error("bad");
-      state = {habits:o.habits, checks:o.checks||{}};
+      // 保留 fitness 等其他欄位；舊備份沒有 fitness 時補上預設計畫
+      state = {...o, checks:o.checks||{}};
+      ensureFitness(state);
       renderEditor(); render(); scheduleSave();
+      if(!document.getElementById("fitSettings").hidden) renderFitSettings();
       setStatus("已匯入備份","ok");
     }catch(err){ setStatus("這個檔案不是打卡表的備份檔","warn"); }
     e.target.value = "";
@@ -896,10 +1116,13 @@ td.off .rest{color:var(--line-strong)}
               state = JSON.parse(JSON.stringify(incoming));
               if(!state.checks) state.checks = {};
               if(!Array.isArray(state.habits)) state.habits = [];
+              const added = ensureFitness(state);   // 雲端舊資料沒有 fitness:補上預設計畫並存回去
               const sx = $("sheet").scrollLeft;
               render(); $("sheet").scrollLeft = sx;
               if(!$("editor").hidden) renderEditor();
+              if(!$("fitSettings").hidden) renderFitSettings();
               writeLocal();
+              if(added) scheduleSave();
             }
           }
           if(!saveTimer){
