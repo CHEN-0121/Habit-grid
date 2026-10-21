@@ -738,7 +738,7 @@ td.off .rest{color:var(--line-strong)}
   const RP_TOTAL_MS = 12000;   // 1x 時整個月約 12 秒
   let rpSpeed = 1;
   const reduceMotion = () => window.matchMedia && matchMedia("(prefers-reduced-motion: reduce)").matches;
-  const rpShown = (hid, d) => d <= RP.doneDay || (RP.cellIdx[hid+":"+d] ?? Infinity) < RP.i;
+  const rpShown = (hid, d) => (RP.mc[hid]||[]).includes(d) && (d <= RP.doneDay || (RP.cellIdx[hid+":"+d] ?? Infinity) < RP.i);
   function rpPopAge(hid, d){
     const t = RP.popAt[hid+":"+d]; if(t === undefined) return null;
     const age = performance.now() - t; return age < 300 ? Math.round(age) : null;
