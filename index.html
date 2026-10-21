@@ -1,0 +1,650 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>自律打卡表</title>
+<meta name="theme-color" content="#2f6b45">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="自律打卡">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&family=Noto+Serif+TC:wght@700;900&family=IBM+Plex+Mono:wght@400;600&display=swap">
+<style>
+/* Layout: ledger-style sheet — sticky habit column on the left, days grouped by week, daily summary + bar chart sit above the check grid on the same columns */
+:root{
+  --bg:#e9efe9; --sheet:#f6f9f5; --ink:#1f2a24; --muted:#5f6f66; --line:#c9d6cc; --line-strong:#9fb3a5;
+  --band:#d5e3d8; --accent:#2f6b45; --accent-soft:#bcd7c3; --bar:#2b3a6b; --bar-done:#2f6b45; --today:#fff3c4; --future:#eef2ee;
+  --danger:#a23b2a;
+  --f-display:"Noto Serif TC","Songti TC",serif; --f-body:"Noto Sans TC","PingFang TC","Microsoft JhengHei",sans-serif; --f-num:"IBM Plex Mono",ui-monospace,Menlo,monospace;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#121915; --sheet:#18211c; --ink:#e3ece5; --muted:#93a59a; --line:#2c3a31; --line-strong:#41544a; --band:#203029;
+  --accent:#7cc495; --accent-soft:#2c4a37; --bar:#8c9de0; --bar-done:#7cc495; --today:#3a3418; --future:#1b231e; --danger:#e58a77; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#121915; --sheet:#18211c; --ink:#e3ece5; --muted:#93a59a; --line:#2c3a31; --line-strong:#41544a; --band:#203029;
+  --accent:#7cc495; --accent-soft:#2c4a37; --bar:#8c9de0; --bar-done:#7cc495; --today:#3a3418; --future:#1b231e; --danger:#e58a77; color-scheme:dark}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+html{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+body{margin:0}
+body{background:var(--bg);color:var(--ink);font-family:var(--f-body);font-size:14px;line-height:1.5;
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:20px 40px}
+.wrap{max-width:1400px;margin:0 auto;display:flex;flex-direction:column;gap:16px}
+header{display:flex;flex-wrap:wrap;align-items:flex-end;justify-content:space-between;gap:12px 24px}
+h1{font-family:var(--f-display);font-weight:900;font-size:clamp(26px,5vw,36px);margin:0;letter-spacing:.02em;text-wrap:balance}
+.sub{color:var(--muted);margin:2px 0 0;font-size:13px}
+.month{display:flex;align-items:center;gap:8px}
+.month strong{font-family:var(--f-num);font-size:18px;min-width:7.5em;text-align:center;font-variant-numeric:tabular-nums}
+button{font:inherit;color:inherit;cursor:pointer}
+.btn{border:1px solid var(--line-strong);background:var(--sheet);border-radius:6px;padding:6px 12px;min-height:34px}
+.btn:hover{border-color:var(--accent)}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:var(--sheet);font-weight:700}
+button:focus-visible,input:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:1px;background:var(--line);border:1px solid var(--line);border-radius:8px;overflow:hidden}
+.stat{background:var(--sheet);padding:12px 14px;display:flex;flex-direction:column;gap:4px}
+.stat .k{font-size:12px;color:var(--muted);letter-spacing:.06em}
+.stat .v{font-family:var(--f-num);font-size:24px;font-weight:600;font-variant-numeric:tabular-nums}
+.stat .v small{font-size:13px;color:var(--muted);font-weight:400}
+.meter{height:8px;background:var(--band);border-radius:4px;overflow:hidden}
+.meter i{display:block;height:100%;background:var(--accent);border-radius:4px;transition:width .3s}
+.toolbar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;justify-content:space-between}
+.status{font-size:12px;color:var(--muted);display:flex;align-items:center;gap:6px}
+.status::before{content:"";width:8px;height:8px;border-radius:50%;background:var(--muted)}
+.status.ok::before{background:var(--accent)}
+.status.warn::before{background:var(--danger)}
+
+.sheet{background:var(--sheet);border:1px solid var(--line-strong);border-radius:8px;overflow-x:auto;-webkit-overflow-scrolling:touch}
+table{border-collapse:separate;border-spacing:0;font-variant-numeric:tabular-nums}
+th,td{border-right:1px solid var(--line);border-bottom:1px solid var(--line);padding:0;text-align:center;font-weight:400}
+.wk-end{border-right:2px solid var(--line-strong)}
+.stick{position:sticky;left:0;z-index:2;background:var(--sheet);text-align:left;border-right:2px solid var(--line-strong);width:150px;min-width:150px;max-width:150px;padding:6px 10px}
+thead th{background:var(--band);font-size:11px;color:var(--muted)}
+thead .stick{background:var(--band);z-index:3}
+.wkhead{font-weight:700;color:var(--ink);letter-spacing:.08em;padding:5px 0}
+.dow{padding:3px 0}
+.dnum{font-family:var(--f-num);font-size:12px;color:var(--ink);padding:3px 0}
+.day{width:32px;min-width:32px}
+.today-col{background:var(--today)!important}
+.summary td{font-family:var(--f-num);font-size:12px;height:24px}
+.summary .stick{font-family:var(--f-body);font-size:12px;color:var(--muted)}
+.chart td{height:84px;vertical-align:bottom;padding:4px 3px 2px}
+.chart .bar{width:100%;max-width:18px;margin:0 auto;background:var(--bar);border-radius:2px 2px 0 0;min-height:0;transition:height .3s}
+.chart .bar.full{background:var(--bar-done)}
+.wkprog td{padding:6px 8px}
+.wkprog .meter{height:10px}
+.wkprog span{display:block;font-family:var(--f-num);font-size:11px;color:var(--muted);margin-top:3px}
+.gap td,.gap th{height:8px;background:var(--band);border-right:0}
+.habit .stick{font-size:14px}
+.habit .name{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.habit .goal{display:block;font-size:11px;color:var(--muted);font-family:var(--f-num)}
+.cell{width:100%;height:34px;display:grid;place-items:center;border:0;background:transparent;padding:0}
+.box{width:20px;height:20px;border:1.5px solid var(--line-strong);border-radius:4px;display:grid;place-items:center;transition:background .12s,border-color .12s}
+.cell[aria-pressed="true"] .box{background:var(--accent);border-color:var(--accent)}
+.cell[aria-pressed="true"] .box::after{content:"";width:9px;height:5px;border-left:2.5px solid var(--sheet);border-bottom:2.5px solid var(--sheet);transform:translateY(-1px) rotate(-45deg)}
+.cell:hover:not(:disabled) .box{border-color:var(--accent)}
+.cell:disabled{cursor:default}
+.cell:disabled .box{border-style:dotted;opacity:.45}
+td.future{background:var(--future)}
+.tot{min-width:96px;padding:4px 10px;text-align:left}
+.tot b{font-family:var(--f-num);font-weight:600}
+.tot .meter{margin-top:3px;height:6px}
+.tot.hit b{color:var(--accent)}
+thead .tot{text-align:left;padding-left:10px}
+.empty{padding:28px 16px;color:var(--muted);text-align:left}
+
+/* editor */
+.editor{background:var(--sheet);border:1px solid var(--line-strong);border-radius:8px;padding:16px;display:flex;flex-direction:column;gap:12px}
+.editor h2{margin:0;font-family:var(--f-display);font-size:18px}
+.editor p{margin:0;color:var(--muted);font-size:13px}
+.erow{display:grid;grid-template-columns:1fr 92px auto;gap:8px;align-items:center}
+.erow input{font:inherit;color:inherit;background:var(--bg);border:1px solid var(--line-strong);border-radius:6px;padding:7px 10px;min-width:0;width:100%}
+.erow .acts{display:flex;gap:4px}
+.icon{border:1px solid var(--line);background:transparent;border-radius:6px;width:34px;height:34px}
+.icon.del.armed{background:var(--danger);color:var(--sheet);border-color:var(--danger);width:auto;padding:0 8px;font-size:12px}
+.lbl{font-size:11px;color:var(--muted);display:grid;grid-template-columns:1fr 92px auto;gap:8px}
+.seg{display:inline-flex;border:1px solid var(--line-strong);border-radius:6px;overflow:hidden}
+.seg button{border:0;background:var(--sheet);padding:6px 14px;min-height:34px}
+.seg button[aria-pressed="true"]{background:var(--accent);color:var(--sheet);font-weight:700}
+.tools{display:flex;gap:8px;flex-wrap:wrap}
+.today{background:var(--sheet);border:1px solid var(--line-strong);border-radius:8px;overflow:hidden;max-width:560px;width:100%}
+.today-head{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:12px 14px;background:var(--band)}
+.today-head strong{font-size:16px}
+.today-head .count{font-family:var(--f-num);font-size:13px;color:var(--muted)}
+.tlist{list-style:none;margin:0;padding:0}
+.titem{border-top:1px solid var(--line)}
+.titem button{width:100%;display:flex;align-items:center;gap:14px;padding:14px;border:0;background:transparent;text-align:left;min-height:60px}
+.titem .box{width:28px;height:28px;flex:none;border-radius:6px}
+.titem button[aria-pressed="true"] .box{background:var(--accent);border-color:var(--accent)}
+.titem button[aria-pressed="true"] .box::after{content:"";width:12px;height:7px;border-left:3px solid var(--sheet);border-bottom:3px solid var(--sheet);transform:translateY(-2px) rotate(-45deg)}
+.titem .tn{flex:1;min-width:0;font-size:16px}
+.titem button[aria-pressed="true"] .tn{color:var(--muted);text-decoration:line-through;text-decoration-color:var(--accent)}
+.titem .tm{font-family:var(--f-num);font-size:12px;color:var(--muted);white-space:nowrap}
+.today-foot{padding:12px 14px;border-top:1px solid var(--line);font-size:12px;color:var(--muted)}
+table{min-width:100%}
+.chart .stick{vertical-align:bottom;padding-bottom:6px}
+@media (max-width:520px){.stats{grid-template-columns:1fr 1fr}.stat:last-child{grid-column:span 2}.erow,.lbl{grid-template-columns:1fr 70px auto}.stat .v{font-size:20px}}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+
+.acct{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:12px;color:var(--muted)}
+.acct b{color:var(--ink);font-weight:500;max-width:16em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.authbox{background:var(--sheet);border:1px solid var(--line-strong);border-radius:8px;padding:16px;display:flex;flex-direction:column;gap:10px;max-width:420px;width:100%}
+.authbox h2{margin:0;font-family:var(--f-display);font-size:18px}
+.authbox p{margin:0;color:var(--muted);font-size:13px}
+.authbox input{font:inherit;color:inherit;background:var(--bg);border:1px solid var(--line-strong);border-radius:6px;padding:9px 10px;width:100%}
+.authbox .row{display:flex;gap:8px;flex-wrap:wrap}
+.authbox .row .btn{flex:1}
+.or{display:flex;align-items:center;gap:8px;color:var(--muted);font-size:12px}
+.or::before,.or::after{content:"";flex:1;height:1px;background:var(--line)}
+.err{color:var(--danger);font-size:13px;min-height:1em}
+.linkbtn{border:0;background:none;color:var(--accent);padding:0;text-decoration:underline;font-size:12px;align-self:flex-start}
+.backup{display:flex;gap:8px;flex-wrap:wrap;border-top:1px solid var(--line);padding-top:12px}
+</style>
+<script src="firebase-config.js"></script>
+</head>
+<body>
+
+<div class="wrap">
+  <header>
+    <div>
+      <h1>自律打卡表</h1>
+      <p class="sub">每天勾選完成的習慣，系統自動統計每日、每週與每個習慣的達成率。</p>
+    </div>
+    <div class="month">
+      <button class="btn" id="prev" aria-label="上個月">‹</button>
+      <strong id="mlabel">—</strong>
+      <button class="btn" id="next" aria-label="下個月">›</button>
+      <button class="btn" id="thismonth">本月</button>
+    </div>
+  </header>
+
+  <section class="stats" id="stats" aria-label="本月總覽"></section>
+
+  <div class="toolbar">
+    <div class="acct">
+      <span class="status" id="status">載入中…</span>
+      <span id="acctInfo" hidden>· <b id="acctEmail"></b> <button class="linkbtn" id="logout">登出</button></span>
+      <button class="btn" id="loginBtn" hidden>登入以同步手機與電腦</button>
+    </div>
+    <div class="tools">
+      <div class="seg" role="group" aria-label="檢視方式">
+        <button id="vToday" aria-pressed="false">今日打卡</button>
+        <button id="vMonth" aria-pressed="false">整月表格</button>
+      </div>
+      <button class="btn" id="toggleEdit" aria-expanded="false">編輯習慣</button>
+    </div>
+  </div>
+
+  <section class="authbox" id="authBox" hidden aria-label="登入">
+    <h2>登入同步</h2>
+    <p>登入後，手機和電腦會看到同一份打卡紀錄。沒登入也能用，但資料只存在這台裝置。</p>
+    <button class="btn" id="gLogin">使用 Google 帳號登入</button>
+    <div class="or">或用 Email</div>
+    <form id="emailForm" style="display:flex;flex-direction:column;gap:8px">
+      <input id="email" type="email" autocomplete="email" placeholder="Email" required>
+      <input id="pw" type="password" autocomplete="current-password" placeholder="密碼(至少 6 個字元)" minlength="6" required>
+      <div class="row"><button class="btn primary" type="submit" id="emailLogin">登入</button><button class="btn" type="button" id="emailSignup">建立帳號</button></div>
+    </form>
+    <button class="linkbtn" id="resetPw" type="button">忘記密碼</button>
+    <div class="err" id="authErr" role="alert"></div>
+  </section>
+
+  <section class="today" id="todayView" hidden aria-label="單日打卡">
+    <div class="today-head">
+      <button class="btn" id="dPrev" aria-label="前一天">‹</button>
+      <div style="text-align:center"><strong id="dLabel">—</strong><div class="count" id="dCount"></div></div>
+      <button class="btn" id="dNext" aria-label="後一天">›</button>
+    </div>
+    <ul class="tlist" id="tlist"></ul>
+    <div class="today-foot">完整的每日長條圖、每週進度與各習慣達成率，切到「整月表格」查看(電腦螢幕最清楚)。</div>
+  </section>
+
+  <section class="editor" id="editor" hidden>
+    <h2>習慣清單</h2>
+    <p>「月目標」是一個月內想完成的天數。修改後會自動儲存，所有月份共用同一份清單。</p>
+    <div class="lbl"><span>習慣名稱</span><span>月目標(天)</span><span></span></div>
+    <div id="elist" style="display:flex;flex-direction:column;gap:8px"></div>
+    <div><button class="btn primary" id="addHabit">＋ 新增習慣</button></div>
+    <div class="backup">
+      <button class="btn" id="exportBtn">匯出備份 (.json)</button>
+      <label class="btn" for="importFile" style="display:inline-flex;align-items:center">匯入備份</label>
+      <input type="file" id="importFile" accept="application/json,.json" hidden>
+    </div>
+  </section>
+
+  <div class="sheet" id="sheet"><table id="grid"></table></div>
+</div>
+
+<script>
+(function(){
+  const DOW = ["日","一","二","三","四","五","六"];
+  const LS_KEY = "habit-grid-v1";
+  const DEFAULT_HABITS = [
+    ["06:00 起床",25],["運動 30 分鐘",20],["閱讀 20 頁",24],["記帳",27],
+    ["不喝酒",28],["社群媒體減量",22],["規劃今日行程",25],["冷水澡",18]
+  ];
+  const uid6 = () => Math.random().toString(36).slice(2,8);
+  const esc = s => String(s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+  const pad = n => String(n).padStart(2,"0");
+
+  let state = null;
+  let mode = "local";       // "cloud" | "local"
+  let ref = null;           // db doc ref
+  let saveTimer = null, saving = false, dirtyAgain = false;
+  const now = new Date();
+  let vy = now.getFullYear(), vm = now.getMonth();
+
+  function freshState(){
+    return {habits: DEFAULT_HABITS.map(([name,goal])=>({id:uid6(),name,goal})), checks:{}};
+  }
+  function readLocal(){
+    try{ const s = localStorage.getItem(LS_KEY); if(s){ const o = JSON.parse(s); if(o && Array.isArray(o.habits)) return o; } }catch(e){}
+    return null;
+  }
+  function writeLocal(){ try{ localStorage.setItem(LS_KEY, JSON.stringify(state)); }catch(e){} }
+
+  const mkey = () => `${vy}-${pad(vm+1)}`;
+  function monthChecks(create){
+    const k = mkey();
+    if(!state.checks[k]){ if(!create) return {}; state.checks[k] = {}; }
+    return state.checks[k];
+  }
+  function isDone(hid,d){ const mc = monthChecks(false); return !!(mc[hid] && mc[hid].includes(d)); }
+
+  function setStatus(text, cls){ const el = document.getElementById("status"); el.textContent = text; el.className = "status " + (cls||""); }
+
+  // ---------- persistence ----------
+  function scheduleSave(){
+    writeLocal();
+    if(mode !== "cloud"){ setStatus("已存在這個裝置","ok"); return; }
+    setStatus("儲存中…");
+    clearTimeout(saveTimer);
+    saveTimer = setTimeout(flush, 600);
+  }
+  async function flush(){
+    saveTimer = null;
+    if(saving){ dirtyAgain = true; return; }
+    saving = true;
+    try{
+      // Firestore writes land in the local cache right away and upload when online
+      fb.fsM.setDoc(ref, JSON.parse(JSON.stringify(state))).catch(()=>setStatus("同步失敗，資料先存在這個裝置","warn"));
+    }catch(e){
+      setStatus("同步失敗，資料先存在這個裝置","warn");
+    }finally{
+      saving = false;
+      if(dirtyAgain){ dirtyAgain = false; flush(); }
+    }
+  }
+
+  // ---------- render ----------
+  function render(){
+    const days = new Date(vy, vm+1, 0).getDate();
+    const habits = state.habits;
+    const mc = monthChecks(false);
+    const today = new Date(); today.setHours(0,0,0,0);
+    const isFuture = d => new Date(vy,vm,d) > today;
+    const isToday = d => vy===today.getFullYear() && vm===today.getMonth() && d===today.getDate();
+    document.getElementById("mlabel").textContent = `${vy} 年 ${vm+1} 月`;
+
+    // weeks (Sun–Sat)
+    const weeks = []; let cur = null;
+    for(let d=1; d<=days; d++){
+      const dow = new Date(vy,vm,d).getDay();
+      if(!cur || dow===0){ cur = []; weeks.push(cur); }
+      cur.push(d);
+    }
+    const lastOfWeek = new Set(weeks.map(w=>w[w.length-1]));
+    const doneOn = d => habits.reduce((n,h)=>n + (mc[h.id]&&mc[h.id].includes(d)?1:0),0);
+    const H = habits.length;
+    const dc = d => `day${lastOfWeek.has(d)?" wk-end":""}${isToday(d)?" today-col":""}`;
+
+    let html = "<thead><tr><th class='stick' rowspan='3' style='vertical-align:bottom;font-size:12px;color:var(--ink);font-weight:700'>每日習慣</th>";
+    weeks.forEach((w,i)=>{ html += `<th class="wkhead wk-end" colspan="${w.length}">第 ${i+1} 週</th>`; });
+    html += "<th class='tot' rowspan='3' style='vertical-align:bottom'>本月完成</th></tr><tr>";
+    for(let d=1; d<=days; d++) html += `<th class="dow ${dc(d)}">${DOW[new Date(vy,vm,d).getDay()]}</th>`;
+    html += "</tr><tr>";
+    for(let d=1; d<=days; d++) html += `<th class="dnum ${dc(d)}">${d}</th>`;
+    html += "</tr></thead>";
+
+    // summary block
+    html += "<tbody class='summary'>";
+    html += "<tr class='chart'><td class='stick'>每日完成數</td>";
+    for(let d=1; d<=days; d++){
+      const n = doneOn(d), pct = H ? n/H*100 : 0;
+      html += `<td class="${dc(d)}"><div class="bar${n===H&&H?" full":""}" style="height:${pct*0.7}px" title="${d} 日：${n}/${H}"></div></td>`;
+    }
+    html += "<td class='tot'></td></tr>";
+    const sumRow = (label, fn) => {
+      html += `<tr><td class="stick">${label}</td>`;
+      for(let d=1; d<=days; d++){ const f = isFuture(d); html += `<td class="${dc(d)}${f?" future":""}">${f?"":fn(d)}</td>`; }
+      html += "<td class='tot'></td></tr>";
+    };
+    sumRow("完成", d=>doneOn(d));
+    sumRow("目標", ()=>H);
+    sumRow("剩餘", d=>H-doneOn(d));
+    html += "<tr class='wkprog'><td class='stick'>每週進度</td>";
+    weeks.forEach(w=>{
+      const tot = w.length*H, done = w.reduce((s,d)=>s+doneOn(d),0), p = tot? Math.round(done/tot*100):0;
+      html += `<td class="wk-end" colspan="${w.length}"><div class="meter"><i style="width:${p}%"></i></div><span>${done}/${tot} · ${p}%</span></td>`;
+    });
+    html += "<td class='tot'></td></tr></tbody>";
+    html += `<tbody><tr class="gap"><td class="stick" style="padding:0"></td><td colspan="${days+1}"></td></tr></tbody>`;
+
+    // habits
+    html += "<tbody>";
+    if(!H){
+      html += `<tr><td class="stick" colspan="1"></td><td colspan="${days+1}" class="empty">還沒有任何習慣。按「編輯習慣」新增第一個。</td></tr>`;
+    }
+    habits.forEach(h=>{
+      const arr = mc[h.id] || [];
+      const cnt = arr.filter(d=>d<=days).length;
+      const goal = Math.max(1, Math.min(days, Number(h.goal)||days));
+      const p = Math.min(100, Math.round(cnt/goal*100));
+      html += `<tr class="habit"><td class="stick"><span class="name" title="${esc(h.name)}">${esc(h.name)}</span><span class="goal">月目標 ${goal} 天</span></td>`;
+      for(let d=1; d<=days; d++){
+        const f = isFuture(d), on = arr.includes(d);
+        html += `<td class="${dc(d)}${f?" future":""}"><button class="cell" data-h="${h.id}" data-d="${d}" aria-pressed="${on}" aria-label="${esc(h.name)} ${vm+1}月${d}日"${f?" disabled":""}><span class="box"></span></button></td>`;
+      }
+      html += `<td class="tot${cnt>=goal?" hit":""}"><b>${cnt}</b> / ${goal}<div class="meter"><i style="width:${p}%"></i></div></td></tr>`;
+    });
+    html += "</tbody>";
+    document.getElementById("grid").innerHTML = html;
+    renderStats(days, weeks, doneOn, isFuture, isToday);
+    renderToday();
+  }
+
+  function renderStats(days, weeks, doneOn, isFuture, isToday){
+    const H = state.habits.length;
+    let elapsed = 0, done = 0;
+    for(let d=1; d<=days; d++){ if(!isFuture(d)){ elapsed++; done += doneOn(d); } }
+    const possible = elapsed*H, rate = possible ? Math.round(done/possible*100) : 0;
+    let todayTxt = "—", todayP = 0;
+    for(let d=1; d<=days; d++) if(isToday(d)){ const n = doneOn(d); todayTxt = `${n}<small> / ${H}</small>`; todayP = H? n/H*100:0; }
+    // streak: consecutive past days (ending today or yesterday) with all habits done — across this view month
+    let streak = 0;
+    for(let d=days; d>=1; d--){
+      if(isFuture(d)) continue;
+      const full = H && doneOn(d)===H;
+      if(full) streak++; else if(isToday(d)) continue; else break;
+    }
+    const goals = state.habits.filter(h=>{ const arr = monthChecks(false)[h.id]||[]; return arr.length >= Math.min(days, Number(h.goal)||days); }).length;
+    document.getElementById("stats").innerHTML =
+      `<div class="stat"><span class="k">本月完成率</span><span class="v">${rate}<small>%</small></span><div class="meter"><i style="width:${rate}%"></i></div></div>`+
+      `<div class="stat"><span class="k">今日進度</span><span class="v">${todayTxt}</span><div class="meter"><i style="width:${todayP}%"></i></div></div>`+
+      `<div class="stat"><span class="k">累計打勾</span><span class="v">${done}<small> / ${possible}</small></span></div>`+
+      `<div class="stat"><span class="k">全勤連續天數</span><span class="v">${streak}<small> 天</small></span></div>`+
+      `<div class="stat"><span class="k">已達月目標</span><span class="v">${goals}<small> / ${H} 項</small></span></div>`;
+  }
+
+  // ---------- editor ----------
+  function renderEditor(){
+    const el = document.getElementById("elist");
+    el.innerHTML = state.habits.map((h,i)=>`
+      <div class="erow" data-id="${h.id}">
+        <input id="n-${h.id}" data-f="name" value="${esc(h.name)}" maxlength="40" aria-label="習慣名稱">
+        <input id="g-${h.id}" data-f="goal" type="number" min="1" max="31" value="${esc(h.goal)}" aria-label="月目標天數">
+        <div class="acts">
+          <button class="icon" data-act="up" aria-label="上移"${i===0?" disabled":""}>↑</button>
+          <button class="icon" data-act="down" aria-label="下移"${i===state.habits.length-1?" disabled":""}>↓</button>
+          <button class="icon del" data-act="del" aria-label="刪除">✕</button>
+        </div>
+      </div>`).join("");
+  }
+  document.getElementById("elist").addEventListener("input", e=>{
+    const row = e.target.closest(".erow"); if(!row) return;
+    const h = state.habits.find(x=>x.id===row.dataset.id); if(!h) return;
+    if(e.target.dataset.f==="name") h.name = e.target.value.trim() || "未命名習慣";
+    if(e.target.dataset.f==="goal"){ const v = parseInt(e.target.value,10); if(v>0) h.goal = Math.min(31,v); }
+    render(); scheduleSave();
+  });
+  document.getElementById("elist").addEventListener("click", e=>{
+    const b = e.target.closest("button"); if(!b) return;
+    const row = b.closest(".erow"); const i = state.habits.findIndex(x=>x.id===row.dataset.id);
+    if(b.dataset.act==="up" && i>0){ [state.habits[i-1],state.habits[i]]=[state.habits[i],state.habits[i-1]]; }
+    else if(b.dataset.act==="down" && i<state.habits.length-1){ [state.habits[i+1],state.habits[i]]=[state.habits[i],state.habits[i+1]]; }
+    else if(b.dataset.act==="del"){
+      if(!b.classList.contains("armed")){ b.classList.add("armed"); b.textContent="確定刪除"; setTimeout(()=>{ if(b.isConnected){ b.classList.remove("armed"); b.textContent="✕"; } },3000); return; }
+      const id = state.habits[i].id; state.habits.splice(i,1);
+      Object.values(state.checks).forEach(m=>{ delete m[id]; });
+    } else return;
+    renderEditor(); render(); scheduleSave();
+  });
+  document.getElementById("addHabit").addEventListener("click", ()=>{
+    const h = {id:uid6(), name:"新習慣", goal:20}; state.habits.push(h);
+    renderEditor(); render(); scheduleSave();
+    const inp = document.getElementById("n-"+h.id); if(inp){ inp.focus(); inp.select(); }
+  });
+  document.getElementById("toggleEdit").addEventListener("click", e=>{
+    const ed = document.getElementById("editor"); ed.hidden = !ed.hidden;
+    e.currentTarget.setAttribute("aria-expanded", String(!ed.hidden));
+    e.currentTarget.textContent = ed.hidden ? "編輯習慣" : "完成編輯";
+    if(!ed.hidden) renderEditor();
+  });
+
+  // ---------- single-day (phone) view ----------
+  const today0 = () => { const t = new Date(); t.setHours(0,0,0,0); return t; };
+  let sd = today0();
+  function toggleCheck(y, m, hid, d){
+    const k = `${y}-${pad(m+1)}`;
+    const mc = state.checks[k] || (state.checks[k] = {});
+    const arr = mc[hid] || (mc[hid] = []);
+    const i = arr.indexOf(d);
+    if(i>=0) arr.splice(i,1); else { arr.push(d); arr.sort((a,b)=>a-b); }
+  }
+  function renderToday(){
+    const y = sd.getFullYear(), m = sd.getMonth(), d = sd.getDate();
+    const mc = state.checks[`${y}-${pad(m+1)}`] || {};
+    const days = new Date(y, m+1, 0).getDate();
+    const isT = sd.getTime() === today0().getTime();
+    document.getElementById("dLabel").textContent = `${m+1} 月 ${d} 日(${DOW[sd.getDay()]})${isT?" · 今天":""}`;
+    document.getElementById("dNext").disabled = isT;
+    let n = 0;
+    document.getElementById("tlist").innerHTML = state.habits.length ? state.habits.map(h=>{
+      const arr = mc[h.id] || [], on = arr.includes(d); if(on) n++;
+      const goal = Math.max(1, Math.min(days, Number(h.goal)||days));
+      return `<li class="titem"><button data-h="${h.id}" aria-pressed="${on}"><span class="box"></span><span class="tn">${esc(h.name)}</span><span class="tm">本月 ${arr.length}/${goal}</span></button></li>`;
+    }).join("") : `<li class="titem"><div class="empty">還沒有任何習慣。按「編輯習慣」新增第一個。</div></li>`;
+    document.getElementById("dCount").textContent = `完成 ${n} / ${state.habits.length}`;
+  }
+  document.getElementById("tlist").addEventListener("click", e=>{
+    const b = e.target.closest("button[data-h]"); if(!b) return;
+    toggleCheck(sd.getFullYear(), sd.getMonth(), b.dataset.h, sd.getDate());
+    render();
+    const nb = document.querySelector(`#tlist button[data-h="${b.dataset.h}"]`); if(nb) nb.focus({preventScroll:true});
+    scheduleSave();
+  });
+  function shiftDay(n){
+    const t = new Date(sd); t.setDate(t.getDate()+n);
+    if(t > today0()) return;
+    sd = t; vy = sd.getFullYear(); vm = sd.getMonth(); render();
+  }
+  document.getElementById("dPrev").onclick = ()=>shiftDay(-1);
+  document.getElementById("dNext").onclick = ()=>shiftDay(1);
+
+  let view = null;
+  function setView(v){
+    view = v;
+    document.getElementById("todayView").hidden = v !== "today";
+    document.getElementById("sheet").hidden = v !== "month";
+    document.getElementById("vToday").setAttribute("aria-pressed", String(v==="today"));
+    document.getElementById("vMonth").setAttribute("aria-pressed", String(v==="month"));
+    try{ localStorage.setItem(LS_KEY+"-view", v); }catch(e){}
+    if(v==="month") scrollToToday();
+  }
+  document.getElementById("vToday").onclick = ()=>setView("today");
+  document.getElementById("vMonth").onclick = ()=>setView("month");
+
+  // ---------- grid interaction ----------
+  document.getElementById("grid").addEventListener("click", e=>{
+    const b = e.target.closest(".cell"); if(!b || b.disabled) return;
+    const hid = b.dataset.h, d = +b.dataset.d;
+    toggleCheck(vy, vm, hid, d);
+    const sx = document.getElementById("sheet").scrollLeft;
+    render(); document.getElementById("sheet").scrollLeft = sx;
+    const nb = document.querySelector(`.cell[data-h="${hid}"][data-d="${d}"]`); if(nb) nb.focus({preventScroll:true});
+    scheduleSave();
+  });
+  function go(dm){ vm += dm; if(vm<0){vm=11;vy--;} if(vm>11){vm=0;vy++;} render(); scrollToToday(); }
+  document.getElementById("prev").onclick = ()=>go(-1);
+  document.getElementById("next").onclick = ()=>go(1);
+  document.getElementById("thismonth").onclick = ()=>{ vy=now.getFullYear(); vm=now.getMonth(); render(); scrollToToday(); };
+  function scrollToToday(){
+    const sh = document.getElementById("sheet"); const t = sh.querySelector("th.today-col");
+    sh.scrollLeft = t ? Math.max(0, t.offsetLeft - sh.clientWidth/2) : 0;
+  }
+
+  // ---------- boot ----------
+  state = readLocal() || freshState();
+  render();
+  let savedView = null; try{ savedView = localStorage.getItem(LS_KEY+"-view"); }catch(e){}
+  setView(savedView === "today" || savedView === "month" ? savedView : (window.innerWidth < 760 ? "today" : "month"));
+  setStatus("資料存在這個裝置");
+
+  // ---------- backup ----------
+  document.getElementById("exportBtn").addEventListener("click", ()=>{
+    const blob = new Blob([JSON.stringify(state, null, 2)], {type:"application/json"});
+    const a = document.createElement("a");
+    const d = new Date();
+    a.href = URL.createObjectURL(blob);
+    a.download = `habit-backup-${d.getFullYear()}${pad(d.getMonth()+1)}${pad(d.getDate())}.json`;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(()=>URL.revokeObjectURL(a.href), 2000);
+  });
+  document.getElementById("importFile").addEventListener("change", async e=>{
+    const f = e.target.files && e.target.files[0]; if(!f) return;
+    try{
+      const o = JSON.parse(await f.text());
+      if(!o || !Array.isArray(o.habits) || typeof o.checks !== "object") throw new Error("bad");
+      state = {habits:o.habits, checks:o.checks||{}};
+      renderEditor(); render(); scheduleSave();
+      setStatus("已匯入備份","ok");
+    }catch(err){ setStatus("這個檔案不是打卡表的備份檔","warn"); }
+    e.target.value = "";
+  });
+
+  // ---------- cloud sync (Firebase) ----------
+  const FB_VER = "10.12.2";
+  const cfg = window.HABIT_FIREBASE_CONFIG || null;
+  const configured = !!(cfg && cfg.apiKey && cfg.projectId && !/請填|YOUR_/i.test(cfg.apiKey));
+  let fb = null, unsub = null;
+  const $ = id => document.getElementById(id);
+
+  const AUTH_MSG = {
+    "auth/invalid-email":"Email 格式不正確。",
+    "auth/invalid-credential":"Email 或密碼錯誤。",
+    "auth/wrong-password":"Email 或密碼錯誤。",
+    "auth/user-not-found":"找不到這個帳號，請先按「建立帳號」。",
+    "auth/email-already-in-use":"這個 Email 已經註冊過，請直接登入。",
+    "auth/weak-password":"密碼至少要 6 個字元。",
+    "auth/too-many-requests":"嘗試次數太多，請稍後再試。",
+    "auth/network-request-failed":"網路連線失敗，請確認有連上網路。",
+    "auth/popup-closed-by-user":"登入視窗被關閉了，請再試一次。",
+    "auth/unauthorized-domain":"這個網址還沒加入 Firebase 的授權網域(見設定教學第 5 步)。",
+    "auth/operation-not-allowed":"Firebase 後台還沒啟用這種登入方式(見設定教學第 3 步)。"
+  };
+  function showAuthError(e){ if(!e) return; $("authErr").textContent = AUTH_MSG[e.code] || ("登入失敗：" + (e.code || e.message)); }
+
+  function onUser(user){
+    if(unsub){ unsub(); unsub = null; }
+    if(user){
+      mode = "cloud";
+      $("authBox").hidden = true; $("loginBtn").hidden = true;
+      $("acctInfo").hidden = false; $("acctEmail").textContent = user.email || "已登入";
+      ref = fb.fsM.doc(fb.db, "users", user.uid);
+      let uploaded = false;
+      unsub = fb.fsM.onSnapshot(ref, {includeMetadataChanges:true}, snap=>{
+        if(snap.exists()){
+          if(!(saveTimer || saving)){
+            const incoming = snap.data();
+            if(JSON.stringify(incoming) !== JSON.stringify(state)){
+              state = JSON.parse(JSON.stringify(incoming));
+              if(!state.checks) state.checks = {};
+              if(!Array.isArray(state.habits)) state.habits = [];
+              const sx = $("sheet").scrollLeft;
+              render(); $("sheet").scrollLeft = sx;
+              if(!$("editor").hidden) renderEditor();
+              writeLocal();
+            }
+          }
+          if(!saveTimer){
+            if(snap.metadata.hasPendingWrites) setStatus("已存在裝置，連上網路後自動同步");
+            else setStatus("已同步","ok");
+          }
+        } else if(!uploaded && !snap.metadata.fromCache){
+          uploaded = true; scheduleSave();   // first login: upload this device's list and records
+        }
+      }, ()=>{ mode = "local"; setStatus("無法同步，資料先存在這個裝置","warn"); });
+    }else{
+      mode = "local"; ref = null;
+      $("acctInfo").hidden = true; $("loginBtn").hidden = false;
+      setStatus("未登入：資料只存在這個裝置");
+    }
+  }
+
+  async function initCloud(){
+    if(!configured){
+      setStatus("尚未設定雲端同步：資料只存在這個裝置");
+      return;
+    }
+    try{
+      const [appM, authM, fsM] = await Promise.all([
+        import(`https://www.gstatic.com/firebasejs/${FB_VER}/firebase-app.js`),
+        import(`https://www.gstatic.com/firebasejs/${FB_VER}/firebase-auth.js`),
+        import(`https://www.gstatic.com/firebasejs/${FB_VER}/firebase-firestore.js`)
+      ]);
+      const app = appM.initializeApp(cfg);
+      const auth = authM.getAuth(app);
+      let db;
+      try{ db = fsM.initializeFirestore(app, {localCache: fsM.persistentLocalCache({tabManager: fsM.persistentMultipleTabManager()})}); }
+      catch(e){ db = fsM.getFirestore(app); }
+      fb = {authM, fsM, auth, db};
+      authM.getRedirectResult(auth).catch(showAuthError);
+      authM.onAuthStateChanged(auth, onUser);
+    }catch(e){
+      setStatus("無法載入雲端同步(可能離線),資料先存在這個裝置","warn");
+    }
+  }
+
+  $("loginBtn").addEventListener("click", ()=>{ $("authBox").hidden = !$("authBox").hidden; $("authErr").textContent = ""; });
+  $("logout").addEventListener("click", ()=>{ if(fb) fb.authM.signOut(fb.auth); });
+  $("gLogin").addEventListener("click", async ()=>{
+    if(!fb) return; $("authErr").textContent = "";
+    const provider = new fb.authM.GoogleAuthProvider();
+    try{ await fb.authM.signInWithPopup(fb.auth, provider); }
+    catch(e){
+      if(["auth/popup-blocked","auth/operation-not-supported-in-environment","auth/cancelled-popup-request"].includes(e.code)){
+        fb.authM.signInWithRedirect(fb.auth, provider).catch(showAuthError);
+      } else showAuthError(e);
+    }
+  });
+  $("emailForm").addEventListener("submit", async e=>{
+    e.preventDefault(); if(!fb) return; $("authErr").textContent = "";
+    try{ await fb.authM.signInWithEmailAndPassword(fb.auth, $("email").value.trim(), $("pw").value); }
+    catch(err){ showAuthError(err); }
+  });
+  $("emailSignup").addEventListener("click", async ()=>{
+    if(!fb) return; $("authErr").textContent = "";
+    if(!$("emailForm").reportValidity()) return;
+    try{ await fb.authM.createUserWithEmailAndPassword(fb.auth, $("email").value.trim(), $("pw").value); }
+    catch(err){ showAuthError(err); }
+  });
+  $("resetPw").addEventListener("click", async ()=>{
+    if(!fb) return;
+    const em = $("email").value.trim();
+    if(!em){ $("authErr").textContent = "請先在上面填 Email,再按忘記密碼。"; return; }
+    try{ await fb.authM.sendPasswordResetEmail(fb.auth, em); $("authErr").textContent = "已寄出重設密碼信，請到信箱收信。"; }
+    catch(err){ showAuthError(err); }
+  });
+
+  initCloud();
+
+  if("serviceWorker" in navigator && /^https?:/.test(location.protocol)){
+    navigator.serviceWorker.register("sw.js").catch(()=>{});
+  }
+
+})();
+</script>
+</body>
+</html>
