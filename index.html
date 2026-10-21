@@ -201,6 +201,19 @@ td.off .rest{color:var(--line-strong)}
 .fset{display:flex;align-items:center;gap:10px;font-size:13px}
 .fset input{font:inherit;color:inherit;background:var(--bg);border:1px solid var(--line-strong);border-radius:6px;padding:7px 10px}
 .testday{font-size:12px;padding:2px 8px;border-radius:999px;background:var(--today);color:var(--ink)}
+.push{display:flex;flex-direction:column;gap:10px;border-top:1px solid var(--line);padding-top:12px}
+.push h3{margin:0;font-size:15px}
+.pstat{margin:0;font-size:13px;color:var(--ink)}
+.pstat.warn{color:var(--danger)}
+.phint{margin:0;font-size:12px;color:var(--muted)}
+.remlist{display:flex;flex-direction:column;gap:8px}
+.rem{display:grid;grid-template-columns:auto 140px minmax(0,1fr) auto;gap:8px;align-items:center;padding-bottom:10px;border-bottom:1px dashed var(--line)}
+.rem input[type=time],.rem select{font:inherit;color:inherit;background:var(--bg);border:1px solid var(--line-strong);border-radius:6px;padding:6px 8px;min-width:0;width:100%}
+.rem .rtog{display:flex;align-items:center;gap:4px;font-size:12px;color:var(--muted)}
+.rem .rtog input{width:18px;height:18px;accent-color:var(--accent)}
+.rem.off > :not(.rtog):not(.del){opacity:.5}
+.rem .edays{grid-column:1/-1}
+@media (max-width:520px){.rem{grid-template-columns:auto 132px minmax(0,1fr) auto}}
 thead .frow th{font-size:11px;padding:3px 0;background:var(--sheet);color:var(--muted)}
 thead .frow .stick{background:var(--sheet);font-weight:700;color:var(--ink);padding:3px 10px}
 thead .frow .ft-lift{color:var(--ink);font-weight:700}
@@ -238,6 +251,7 @@ thead .frow .ft-run{color:var(--accent);font-weight:700}
 .rsmall .rrow{grid-template-columns:4.5em minmax(0,1fr) 3em}
 </style>
 <script src="firebase-config.js"></script>
+<script src="fitness-plan.js"></script>
 </head>
 <body>
 
@@ -308,6 +322,19 @@ thead .frow .ft-run{color:var(--accent);font-weight:700}
     <p id="fitInfo"></p>
     <label class="fset"><span>開始日期</span><input type="date" id="fitStart" required></label>
     <p class="err" id="fitErr" role="alert"></p>
+
+    <div class="push">
+      <h3>推播提醒</h3>
+      <p class="pstat" id="pushStatus" role="status"></p>
+      <div class="tools">
+        <button class="btn primary" id="pushEnable" type="button">開啟通知</button>
+        <button class="btn" id="pushTest" type="button">傳送測試通知</button>
+        <button class="btn" id="pushDisable" type="button">關閉這台裝置的通知</button>
+      </div>
+      <p class="phint">提醒時間以台灣時間為準。通知由 GitHub Actions 每 15 分鐘檢查一次，可能比設定時間晚幾分鐘到。</p>
+      <div id="remList" class="remlist"></div>
+      <div><button class="btn" id="remAdd" type="button">＋ 新增提醒</button></div>
+    </div>
   </section>
 
   <section class="editor" id="editor" hidden>
@@ -359,94 +386,13 @@ thead .frow .ft-run{color:var(--accent);font-weight:700}
   const esc = s => String(s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
   const pad = n => String(n).padStart(2,"0");
   const stableJSON = v => JSON.stringify(v, (k,x)=> x && typeof x === "object" && !Array.isArray(x) ? Object.keys(x).sort().reduce((o,kk)=>(o[kk]=x[kk], o), {}) : x);
-  const parseYMD = s => { const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(s || ""); if(!m) return null; const t = new Date(+m[1], +m[2]-1, +m[3]); return t.getMonth() === +m[2]-1 ? t : null; };
-  const ymd = t => `${t.getFullYear()}-${pad(t.getMonth()+1)}-${pad(t.getDate())}`;
+  // 健身計畫的課表、週次、通知內容都在 fitness-plan.js(推播腳本也用同一份)
+  const FP = window.FitnessPlan;
+  const {parseYMD, ymd, ensureFitness} = FP;
+  const fitnessDay = date => FP.fitnessDay(state.fitness, date);
   // 網址加 ?today=2026-10-28 時把那天當作今天(測試用)
   const TODAY_PARAM = parseYMD(new URLSearchParams(location.search).get("today"));
   const today0 = () => { if(TODAY_PARAM) return new Date(TODAY_PARAM); const t = new Date(); t.setHours(0,0,0,0); return t; };
-
-  // ---------- 30 天健身衝刺計畫(state.fitness) ----------
-  // 課表只存標準週(第 2、4 週),各週差異寫在 weeks[n].adjust,顯示時才套用
-  const DEFAULT_FITNESS = {
-    status:"active", source:"user_confirmed", confirmedAt:"2026-10-22",
-    name:"30 天健身衝刺", startDate:"2026-10-26", lengthDays:30, standardWeek:"2",
-    weeklySteps:"55000–60000",
-    dailyTask:"起床上完廁所後量體重",
-    dayTypes:{
-      lift:{label:"重訓日", kcal:2200, protein:160, fat:60, carbs:255, steps:"6000–7000"},
-      run:{label:"跑步日", kcal:2100, protein:160, fat:60, carbs:230, steps:"10000"},
-      rest:{label:"休息日", kcal:2000, protein:160, fat:60, carbs:205, steps:"10000 以上"}
-    },
-    schedule:{"0":"rest","1":"chest","2":"run","3":"back","4":"run","5":"legs","6":"rest"},   // key = getDay()
-    sessions:{
-      chest:{type:"lift", short:"胸", brief:"胸肩三頭", title:"胸＋肩＋三頭＋腹", note:"順序不可調換，胸一定要先練", exercises:[
-        {id:"bench", name:"槓鈴平板臥推", sets:3, reps:"6–8", rest:"2–3 分"},
-        {id:"incline-db", name:"上斜啞鈴臥推", sets:3, reps:"8–12", rest:"2 分"},
-        {id:"pec-deck", name:"蝴蝶機夾胸", sets:2, reps:"12–15", rest:"90 秒"},
-        {id:"lateral", name:"側平舉", sets:3, reps:"12–20", rest:"60 秒"},
-        {id:"db-press", name:"啞鈴肩推", sets:2, reps:"8–12", rest:"90 秒"},
-        {id:"pushdown", name:"繩索三頭下壓", sets:3, reps:"10–15", rest:"60 秒"},
-        {id:"cable-crunch", name:"繩索捲腹", sets:3, reps:"10–15", rest:"60 秒"}]},
-      run:{type:"run", short:"跑", brief:"5 km 輕鬆跑", title:"5 km 輕鬆跑", note:"配速約 6:30–7:00/km,以跑的時候能講話為準", exercises:[]},
-      back:{type:"lift", short:"背", brief:"背二頭", title:"背＋二頭＋腹", exercises:[
-        {id:"pulldown", name:"滑輪下拉", sets:3, reps:"8–12", rest:"2 分"},
-        {id:"chest-row", name:"胸靠式划船", sets:3, reps:"8–12", rest:"2 分"},
-        {id:"seated-row", name:"坐姿划船", sets:2, reps:"10–12", rest:"90 秒"},
-        {id:"reverse-fly", name:"反向飛鳥", sets:2, reps:"12–20", rest:"60 秒"},
-        {id:"db-curl", name:"啞鈴彎舉(左右分開)", sets:3, reps:"10–12", rest:"60 秒"},
-        {id:"hammer", name:"槌式彎舉", sets:2, reps:"10–15", rest:"60 秒"},
-        {id:"knee-raise", name:"懸垂屈膝抬腿", sets:3, reps:"10–15", rest:"60 秒"},
-        {id:"cable-crunch", name:"繩索捲腹", sets:2, reps:"10–15", rest:"60 秒"}]},
-      legs:{type:"lift", short:"腿胸", brief:"腿胸", title:"下肢＋胸＋腹", exercises:[
-        {id:"squat", name:"深蹲", sets:3, reps:"6–10", rest:"2–3 分"},
-        {id:"rdl", name:"羅馬尼亞硬舉", sets:3, reps:"8–10", rest:"2 分"},
-        {id:"leg-press", name:"腿推", sets:2, reps:"10–12", rest:"2 分"},
-        {id:"leg-curl", name:"腿彎舉", sets:2, reps:"10–15", rest:"90 秒"},
-        {id:"incline-machine", name:"上斜機械胸推", sets:4, reps:"8–12", rest:"2 分"},
-        {id:"ab-wheel", name:"健腹輪", sets:3, reps:"6–12", rest:"60 秒"}]},
-      rest:{type:"rest", short:"休", brief:"休息", title:"休息", note:"走路達到步數", exercises:[]}
-    },
-    weeks:{
-      "1":{reserve:"2–3", adjust:[
-        {session:"chest", ex:"cable-crunch", sets:2},
-        {session:"back", ex:"knee-raise", sets:2}, {session:"back", ex:"cable-crunch", skip:true},
-        {session:"legs", ex:"incline-machine", sets:2}, {session:"legs", ex:"ab-wheel", sets:2}]},
-      "2":{reserve:"1–2", adjust:[]},
-      "3":{reserve:"1–2", adjust:[{session:"chest", ex:"bench", sets:4}, {session:"chest", ex:"pec-deck", sets:3}]},
-      "4":{reserve:"1–2", adjust:[]}
-    },
-    tips:{
-      lift:"每一組都做到次數上限，下次槓鈴加 2.5 kg、啞鈴每邊加 1–2 kg。第 1 週先找出每個動作的起始重量",
-      dinner:["蛋白質一份要夠，一個手掌大、一根手指厚，雞腿、雞胸、魚或豬里肌，熟重 150–200 g",
-              "飯 1–1.5 碗，練腿或跑步日 1.5 碗，休息日 1 碗",
-              "蔬菜至少兩樣，選滷、烤、蒸，不選炸"],
-      sundayCheck:"週平均體重下降 0.4–0.8 kg 且腰圍變小 → 維持;下降不到 0.3 kg → 每天多走 2000 步;下降超過 1 kg(第 1 週除外)或力量退步 → 每天加 150 kcal",
-      sundayMeasure:"早上量腰圍(肚臍那一圈)、拍正面和側面照",
-      weekendMeal:"週末其中一餐是放縱餐，不算熱量，吃到七八分飽"
-    }
-  };
-  // 舊資料沒有 fitness 時補上預設計畫；回傳 true 代表有補，呼叫端要存檔
-  function ensureFitness(s){
-    if(s.fitness && typeof s.fitness === "object" && s.fitness.sessions) return false;
-    s.fitness = JSON.parse(JSON.stringify(DEFAULT_FITNESS));
-    return true;
-  }
-  // 某一天的課表：第幾天/第幾週、類型、營養目標、套用該週調整後的動作
-  function fitnessDay(date){
-    const F = state.fitness, start = F && parseYMD(F.startDate); if(!start) return null;
-    const len = F.lengthDays || 30;
-    const day = Math.round((Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()) - Date.UTC(start.getFullYear(), start.getMonth(), start.getDate())) / 864e5) + 1;
-    const phase = day < 1 ? "before" : day > len ? "after" : "active";
-    const week = phase === "active" ? Math.min(4, Math.ceil(day/7)) : null;   // 第 29–30 天算第 4 週
-    const wk = F.weeks[String(week || F.standardWeek)] || {};
-    const key = F.schedule[String(date.getDay())], s = F.sessions[key]; if(!s) return null;
-    const exercises = (s.exercises || []).map(e=>{
-      const x = {...e};
-      (wk.adjust || []).forEach(a=>{ if(a.session === key && a.ex === e.id){ if(a.skip) x.skip = true; if(a.sets){ x.from = e.sets; x.sets = a.sets; } } });
-      return x;
-    });
-    return {phase, day, len, week, key, s, type: F.dayTypes[s.type] || {}, exercises, reserve: wk.reserve, dow: date.getDay(), start};
-  }
 
   // 只在固定星期做的習慣存 days:[0-6](0=週日);舊資料沒有 days,視為每天都要做
   const WEEK = [1,2,3,4,5,6,0];   // 編輯器從週一排到週日
@@ -491,7 +437,7 @@ thead .frow .ft-run{color:var(--accent);font-weight:700}
   let vy = now.getFullYear(), vm = now.getMonth();
 
   function freshState(){
-    return {habits: DEFAULT_HABITS.map(h=>({id:uid6(), ...JSON.parse(JSON.stringify(h))})), checks:{}, fitness: JSON.parse(JSON.stringify(DEFAULT_FITNESS))};
+    return {habits: DEFAULT_HABITS.map(h=>({id:uid6(), ...JSON.parse(JSON.stringify(h))})), checks:{}, fitness: FP.defaultFitness()};
   }
   function readLocal(){
     try{ const s = localStorage.getItem(LS_KEY); if(s){ const o = JSON.parse(s); if(o && Array.isArray(o.habits)) return o; } }catch(e){}
@@ -891,6 +837,8 @@ thead .frow .ft-run{color:var(--accent);font-weight:700}
       `狀態：${STATUS[F.status] || F.status || "—"} · 來源：${SOURCE[F.source] || F.source || "—"} · 確認日期 ${F.confirmedAt || "—"}`;
     const inp = document.getElementById("fitStart");
     if(document.activeElement !== inp) inp.value = F.startDate || "";
+    if(!document.getElementById("remList").contains(document.activeElement)) renderReminders();   // 正在改提醒時不重畫，免得游標跑掉
+    renderPush();
   }
   document.getElementById("fitStart").addEventListener("change", e=>{
     const t = parseYMD(e.target.value);
@@ -903,7 +851,7 @@ thead .frow .ft-run{color:var(--accent);font-weight:700}
     const p = document.getElementById("fitSettings"); p.hidden = !p.hidden;
     e.currentTarget.setAttribute("aria-expanded", String(!p.hidden));
     e.currentTarget.textContent = p.hidden ? "健身計畫" : "完成設定";
-    if(!p.hidden) renderFitSettings();
+    if(!p.hidden){ renderFitSettings(); p.scrollIntoView({behavior: reduceMotion() ? "auto" : "smooth", block: "start"}); }
   });
   if(TODAY_PARAM){ const b = document.getElementById("testDay"); b.hidden = false; b.textContent = `測試日期：${ymd(TODAY_PARAM)}`; }
   document.getElementById("tlist").addEventListener("click", e=>{
@@ -1049,7 +997,8 @@ thead .frow .ft-run{color:var(--accent);font-weight:700}
   if(ensureFitness(state)) writeLocal();
   render();
   let savedView = null; try{ savedView = localStorage.getItem(LS_KEY+"-view"); }catch(e){}
-  setView(savedView === "today" || savedView === "month" ? savedView : (window.innerWidth < 760 ? "today" : "month"));
+  const qView = new URLSearchParams(location.search).get("view");   // 點通知打開時是 ?view=today
+  setView(qView === "today" || qView === "month" ? qView : savedView === "today" || savedView === "month" ? savedView : (window.innerWidth < 760 ? "today" : "month"));
   setStatus("資料存在這個裝置");
 
   // ---------- backup ----------
@@ -1106,6 +1055,10 @@ thead .frow .ft-run{color:var(--accent);font-weight:700}
       $("authBox").hidden = true; $("loginBtn").hidden = true;
       $("acctInfo").hidden = false; $("acctEmail").textContent = user.email || "已登入";
       ref = fb.fsM.doc(fb.db, "users", user.uid);
+      // 這台裝置之前開過通知：更新 lastSeen,token 換了也會順便換掉
+      const pr = readPushLocal();
+      if(pushSupported() && Notification.permission === "granted" && pr && pr.uid === user.uid) registerDevice().catch(()=>{});
+      if(!$("fitSettings").hidden) renderPush();
       let uploaded = false;
       unsub = fb.fsM.onSnapshot(ref, {includeMetadataChanges:true}, snap=>{
         if(snap.exists()){
@@ -1156,7 +1109,7 @@ thead .frow .ft-run{color:var(--accent);font-weight:700}
       let db;
       try{ db = fsM.initializeFirestore(app, {localCache: fsM.persistentLocalCache({tabManager: fsM.persistentMultipleTabManager()})}); }
       catch(e){ db = fsM.getFirestore(app); }
-      fb = {authM, fsM, auth, db};
+      fb = {authM, fsM, auth, db, app};
       authM.getRedirectResult(auth).catch(showAuthError);
       authM.onAuthStateChanged(auth, onUser);
     }catch(e){
@@ -1194,6 +1147,155 @@ thead .frow .ft-run{color:var(--accent);font-weight:700}
     try{ await fb.authM.sendPasswordResetEmail(fb.auth, em); $("authErr").textContent = "已寄出重設密碼信，請到信箱收信。"; }
     catch(err){ showAuthError(err); }
   });
+
+  // ---------- 推播提醒 ----------
+  // FCM token 存在 users/{uid}/devices/{tokenId}(tokenId = token 的 SHA-256,同一支手機不會重複新增)。
+  // 這台裝置登記過的 {uid, id} 記在 localStorage,token 換了就刪掉舊的那筆。實際發送在 scripts/send-reminders.mjs。
+  const PUSH_KEY = LS_KEY + "-push";
+  const isIOS = /iP(hone|ad|od)/.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+  const isStandalone = () => (window.matchMedia && matchMedia("(display-mode: standalone)").matches) || navigator.standalone === true;
+  const pushSupported = () => "serviceWorker" in navigator && "PushManager" in window && "Notification" in window;
+  const devicePlatform = () => isIOS ? "ios" : /Android/i.test(navigator.userAgent) ? "android" : "desktop";
+  const currentUid = () => fb && fb.auth.currentUser ? fb.auth.currentUser.uid : null;
+  let msgM = null, messaging = null, pushBusy = false;
+  function readPushLocal(){ try{ return JSON.parse(localStorage.getItem(PUSH_KEY)) || null; }catch(e){ return null; } }
+  function writePushLocal(v){ try{ if(v) localStorage.setItem(PUSH_KEY, JSON.stringify(v)); else localStorage.removeItem(PUSH_KEY); }catch(e){} }
+  async function tokenId(token){
+    const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(token));
+    return [...new Uint8Array(buf)].slice(0, 20).map(b=>b.toString(16).padStart(2,"0")).join("");
+  }
+  async function getMessaging(){
+    if(messaging) return messaging;
+    if(!fb) throw new Error("no-firebase");
+    msgM = await import(`https://www.gstatic.com/firebasejs/${FB_VER}/firebase-messaging.js`);
+    if(!(await msgM.isSupported())) throw new Error("unsupported");
+    messaging = msgM.getMessaging(fb.app);
+    return messaging;
+  }
+  async function registerDevice(){
+    const uid = currentUid(); if(!uid) throw new Error("need-login");
+    const m = await getMessaging();
+    const reg = await navigator.serviceWorker.ready;   // 用現有的 sw.js 收推播
+    const token = await msgM.getToken(m, {vapidKey: window.HABIT_FCM_VAPID_KEY, serviceWorkerRegistration: reg});
+    if(!token) throw new Error("no-token");
+    const id = await tokenId(token), prev = readPushLocal(), F = fb.fsM;
+    if(prev && prev.uid === uid && prev.id !== id) F.deleteDoc(F.doc(fb.db, "users", uid, "devices", prev.id)).catch(()=>{});
+    const dref = F.doc(fb.db, "users", uid, "devices", id);
+    let exists = false; try{ exists = (await F.getDoc(dref)).exists(); }catch(e){}
+    const ts = F.serverTimestamp();
+    await F.setDoc(dref, exists ? {lastSeen: ts} : {token, platform: devicePlatform(), createdAt: ts, lastSeen: ts}, {merge: true});
+    writePushLocal({uid, id});
+  }
+  async function unregisterDevice(){
+    const prev = readPushLocal();
+    try{ const m = await getMessaging(); await msgM.deleteToken(m); }catch(e){}
+    if(prev && fb) await fb.fsM.deleteDoc(fb.fsM.doc(fb.db, "users", prev.uid, "devices", prev.id)).catch(()=>{});
+    writePushLocal(null);
+  }
+  const PUSH_ERR = {
+    "need-login":"要先登入。", "unsupported":"這個瀏覽器不支援推播通知。", "no-firebase":"雲端同步還沒載入(可能離線)。",
+    "no-token":"拿不到推播憑證，請稍後再試。", "messaging/permission-blocked":"通知權限被封鎖了。",
+    "messaging/token-subscribe-failed":"向 Firebase 登記失敗，請確認 VAPID 金鑰和網路。"
+  };
+  const pushErrText = e => PUSH_ERR[e && (e.code || e.message)] || (e && (e.code || e.message)) || "未知錯誤";
+
+  function renderPush(msg, warn){
+    const st = $("pushStatus"), en = $("pushEnable"), te = $("pushTest"), di = $("pushDisable");
+    const uid = currentUid(), reg = readPushLocal();
+    let text, canEnable = false, on = false, granted = false;
+    if(isIOS && !isStandalone()) text = "iPhone 請先用 Safari 分享 → 加入主畫面，從主畫面打開 App 再開啟通知。";
+    else if(!pushSupported()) text = "這個瀏覽器不支援推播通知。";
+    else if(!configured || !window.HABIT_FCM_VAPID_KEY) text = "還沒設定 Firebase 推播(見 README)。";
+    else if(Notification.permission === "denied"){
+      warn = true;
+      text = isIOS ? "通知已被拒絕。請到 iPhone「設定 → 通知 → 自律打卡」打開「允許通知」,再回來按開啟通知。"
+        : "通知已被拒絕。請點網址列左邊的鎖頭圖示，把「通知」改成允許(手機在「設定 → 應用程式 → 瀏覽器 → 通知」),再重新整理這頁。";
+    }
+    else if(!uid) text = "要先登入，這台裝置才能收到提醒。";
+    else{
+      granted = Notification.permission === "granted";
+      on = granted && !!reg && reg.uid === uid;
+      canEnable = !on;
+      text = on ? "已開啟：這台裝置會收到提醒。" : granted ? "通知已允許，按「開啟通知」登記這台裝置。" : "尚未開啟：按「開啟通知」後，瀏覽器會詢問是否允許通知。";
+    }
+    st.textContent = msg || text; st.classList.toggle("warn", !!warn);
+    en.hidden = !canEnable; en.disabled = pushBusy;
+    te.hidden = !granted; di.hidden = !on;
+  }
+  // 權限一定要由使用者點擊才請求
+  $("pushEnable").addEventListener("click", async ()=>{
+    if(pushBusy) return;
+    pushBusy = true; renderPush("處理中…");
+    try{
+      const perm = await Notification.requestPermission();
+      if(perm === "granted"){ await registerDevice(); pushBusy = false; renderPush(); }
+      else{ pushBusy = false; renderPush(); }
+    }catch(e){ pushBusy = false; renderPush("開啟失敗：" + pushErrText(e), true); }
+  });
+  $("pushDisable").addEventListener("click", async ()=>{
+    if(pushBusy) return;
+    pushBusy = true; renderPush("處理中…");
+    await unregisterDevice();
+    pushBusy = false; renderPush("已關閉這台裝置的通知。");
+  });
+  // 測試通知直接由這台裝置的 sw.js 顯示，用來確認權限和顯示正常(不經過 FCM)
+  $("pushTest").addEventListener("click", async ()=>{
+    try{
+      const reg = await navigator.serviceWorker.ready;
+      const r = (state.fitness.reminders || []).find(x=>x.type === "morning") || {type:"morning"};
+      const m = FP.reminderMessage(state.fitness, r, today0());
+      await reg.showNotification("測試通知 · " + m.title, {body: m.body, icon:"icon-192.png", badge:"icon-192.png", tag:"habit-grid-test", data:{url:"./?view=today"}});
+      renderPush("已送出測試通知。沒看到的話，檢查勿擾模式或系統的通知設定。");
+    }catch(e){ renderPush("測試通知失敗：" + pushErrText(e), true); }
+  });
+
+  // 提醒清單(state.fitness.reminders),時間是台灣時間
+  function renderReminders(){
+    const list = state.fitness.reminders || [];
+    $("remList").innerHTML = list.length ? list.slice().sort((a,b)=>String(a.time).localeCompare(String(b.time))).map(r=>`
+      <div class="rem${r.enabled ? "" : " off"}" data-id="${esc(r.id)}">
+        <label class="rtog"><input type="checkbox" data-f="enabled"${r.enabled ? " checked" : ""}>開</label>
+        <input type="time" data-f="time" value="${esc(r.time || "")}" aria-label="提醒時間" required>
+        <select data-f="type" aria-label="提醒內容">${Object.entries(FP.REMINDER_TYPES).map(([k,v])=>`<option value="${k}"${k === r.type ? " selected" : ""}>${v}</option>`).join("")}</select>
+        <button class="icon del" data-act="rdel" aria-label="刪除提醒">✕</button>
+        <div class="edays" role="group" aria-label="提醒的星期"><span>星期</span>${WEEK.map(w=>`<button type="button" data-act="rdow" data-w="${w}" aria-pressed="${(r.days || []).includes(w)}" aria-label="星期${DOW[w]}">${DOW[w]}</button>`).join("")}</div>
+      </div>`).join("") : `<p class="phint">目前沒有提醒。</p>`;
+  }
+  const remOf = el => { const row = el.closest(".rem"); return row && (state.fitness.reminders || []).find(r=>r.id === row.dataset.id); };
+  $("remList").addEventListener("change", e=>{
+    const r = remOf(e.target); if(!r) return;
+    const f = e.target.dataset.f;
+    if(f === "enabled"){ r.enabled = e.target.checked; e.target.closest(".rem").classList.toggle("off", !r.enabled); }
+    else if(f === "time"){ if(FP.timeToMinutes(e.target.value) === null) return; r.time = e.target.value; }
+    else if(f === "type") r.type = e.target.value;
+    else return;
+    scheduleSave();
+  });
+  $("remList").addEventListener("click", e=>{
+    const b = e.target.closest("button[data-act]"); if(!b) return;
+    const r = remOf(b); if(!r) return;
+    if(b.dataset.act === "rdel"){
+      if(!b.classList.contains("armed")){ b.classList.add("armed"); b.textContent = "確定刪除"; setTimeout(()=>{ if(b.isConnected){ b.classList.remove("armed"); b.textContent = "✕"; } }, 3000); return; }
+      state.fitness.reminders = state.fitness.reminders.filter(x=>x !== r);
+      renderReminders();
+    } else if(b.dataset.act === "rdow"){
+      const w = +b.dataset.w; let ds = (r.days || []).slice();
+      ds = ds.includes(w) ? ds.filter(x=>x !== w) : ds.concat(w).sort((a,c)=>a-c);
+      if(!ds.length) return;   // 至少保留一天
+      r.days = ds; b.setAttribute("aria-pressed", String(ds.includes(w)));
+    } else return;
+    scheduleSave();
+  });
+  $("remAdd").addEventListener("click", ()=>{
+    const r = {id:"r-" + uid6(), time:"12:00", days:[0,1,2,3,4,5,6], type:"morning", enabled:true};
+    (state.fitness.reminders || (state.fitness.reminders = [])).push(r);
+    renderReminders(); scheduleSave();
+    const inp = document.querySelector(`.rem[data-id="${r.id}"] input[type=time]`); if(inp) inp.focus();
+  });
+
+  // 點通知打開 App 時切到「今日打卡」(App 已開著：sw.js 送 open-today 訊息；沒開：網址帶 ?view=today)
+  function openToday(){ sd = today0(); vy = sd.getFullYear(); vm = sd.getMonth(); setView("today"); render(); }
+  if("serviceWorker" in navigator) navigator.serviceWorker.addEventListener("message", e=>{ if(e.data && e.data.type === "open-today") openToday(); });
 
   initCloud();
 

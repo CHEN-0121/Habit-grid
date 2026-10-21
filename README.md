@@ -9,10 +9,12 @@
 | 檔案 | 用途 |
 |---|---|
 | `index.html` | App 本體 |
-| `firebase-config.js` | 填入你的 Firebase 設定(第 4 步) |
+| `fitness-plan.js` | 30 天健身衝刺的課表與通知內容(App 和推播腳本共用) |
+| `firebase-config.js` | 填入你的 Firebase 設定(第 4 步)和推播的 VAPID 公開金鑰(第 7 步) |
 | `firestore.rules` | 資料庫權限：每個人只能讀寫自己的資料 |
 | `firebase.json` | 用 Firebase Hosting 上線時的設定 |
-| `manifest.webmanifest`、`sw.js`、`icon-*.png` | 讓手機可以安裝到主畫面、離線也能打開 |
+| `manifest.webmanifest`、`sw.js`、`icon-*.png` | 讓手機可以安裝到主畫面、離線也能打開；`sw.js` 也負責顯示推播 |
+| `scripts/send-reminders.mjs`、`package.json`、`.github/workflows/reminders.yml` | 定時送推播提醒(第 7 步),在 GitHub Actions 上跑，網站本身不需要 build |
 
 沒填 Firebase 設定也能直接用，只是資料只存在當下那台裝置。
 
@@ -83,6 +85,39 @@ firebase deploy --project 你的專案ID
 
 手機和電腦用**同一個帳號**登入，資料就會同步。
 
+## 7. 推播提醒(選用)
+
+### 架構
+
+```
+手機(App)─ 開啟通知 → 取得 FCM token → 存到 users/{uid}/devices/{tokenId}
+                                    ↑ 讀
+GitHub Actions(每 15 分鐘)─ scripts/send-reminders.mjs ─ firebase-admin ─→ FCM ─→ 手機的 sw.js 顯示通知
+     讀 fitness.reminders,依 fitness-plan.js 產生內容，寫 users/{uid}/meta/reminderLog 避免重複
+```
+
+- 提醒時間固定是台灣時間。GitHub 的排程常會晚幾分鐘，腳本會補送「預定時間在過去 20 分鐘內、今天還沒送過」的提醒
+- 通知內容和 App 的課表用同一份 `fitness-plan.js`,衝刺開始前會顯示倒數、結束後顯示「衝刺已結束」
+- 點通知會打開 App 並切到「今日打卡」
+
+### 設定步驟
+
+1. **VAPID 金鑰**:Firebase「專案設定 → Cloud Messaging」,確認「Firebase Cloud Messaging API (V1)」是啟用的；在「網路設定 → 網路推播憑證」產生金鑰組，把**公開金鑰**貼到 `firebase-config.js` 的 `HABIT_FCM_VAPID_KEY`
+2. **服務帳戶金鑰**:「專案設定 → 服務帳戶」→「產生新的私密金鑰」,會下載一個 JSON 檔。**這個檔案是密碼，不要放進 repo**
+3. **放進 GitHub Secrets**:repo 的「Settings → Secrets and variables → Actions → New repository secret」,名稱填 `FIREBASE_SERVICE_ACCOUNT`,內容貼上 JSON 檔的全部文字。存好後把下載的 JSON 檔刪掉
+4. **發布新的資料庫規則**:`firestore.rules` 多了子集合(devices、meta)的權限，要重新發布一次(做法同第 2 步第 4 點，或用 `firebase deploy --only firestore:rules --project 你的專案ID`)
+5. **手動測試排程**:repo 的「Actions → 推播提醒 → Run workflow」,看 log 最後一行「送出 N 則」
+6. **手機開啟通知**:
+   - **iPhone**(iOS 16.4 以上):一定要先用 Safari「分享 → 加入主畫面」,**從主畫面的圖示**打開 App,登入後到「健身計畫 → 推播提醒 → 開啟通知」
+   - **Android**:用 Chrome 打開(建議也加到主畫面),登入後一樣按「開啟通知」
+   - 「傳送測試通知」會直接在這台裝置顯示一則通知，用來確認權限和顯示正常(不經過 GitHub Actions)
+
+### 注意
+
+- 公開 repo 的 GitHub Actions 免費。repo 超過 60 天沒有任何 commit,GitHub 會自動停用排程，到 Actions 分頁重新啟用即可
+- 手機換了 token 或解除安裝，腳本送不到時會自動刪掉那筆裝置
+- 推播只送 data-only 訊息，由 `sw.js` 顯示通知；不需要 `firebase-messaging-sw.js`
+
 ---
 
 ## 使用方式
@@ -91,6 +126,7 @@ firebase deploy --project 你的專案ID
 - **整月表格**:電腦預設畫面，有每日長條圖、每週進度、每個習慣的月達成率
 - **編輯習慣**:新增、改名、調整順序、設定月目標天數、刪除
 - **匯出 / 匯入備份**:在「編輯習慣」裡，可以存成 `.json` 檔
+- **健身計畫**:今日打卡旁邊的課表卡片、整月表格的課表列；「健身計畫」設定可以改開始日期、開關推播、編輯提醒時間和星期
 
 沒網路時也能打卡，紀錄會先存在手機，連上網路後自動上傳。
 

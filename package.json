@@ -1,0 +1,14 @@
+{
+  "name": "habit-grid-scripts",
+  "private": true,
+  "description": "只給 scripts/ 用(GitHub Actions 定時送推播)。網站本身是純 HTML/CSS/JS,不需要 build。",
+  "scripts": {
+    "send-reminders": "node scripts/send-reminders.mjs"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "firebase-admin": "^12.7.0"
+  }
+}

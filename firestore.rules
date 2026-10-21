@@ -1,8 +1,12 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    // 每個人只能讀寫自己的打卡資料
+    // 每個人只能讀寫自己的打卡資料，以及底下的子集合(devices 推播裝置、meta/reminderLog 發送紀錄)
+    // 推播腳本用 firebase-admin(服務帳戶),不受這些規則限制
     match /users/{uid} {
+      allow read, write: if request.auth != null && request.auth.uid == uid;
+    }
+    match /users/{uid}/{document=**} {
       allow read, write: if request.auth != null && request.auth.uid == uid;
     }
   }

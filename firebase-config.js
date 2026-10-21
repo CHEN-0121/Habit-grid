@@ -8,3 +8,6 @@ window.HABIT_FIREBASE_CONFIG = {
   messagingSenderId: "712165700333",
   appId: "1:712165700333:web:af7fb3c99767afa66352e4",
 };
+
+// 推播用的 VAPID 公開金鑰(Firebase 專案設定 → Cloud Messaging → 網路推播憑證)。這是公開金鑰，放在前端沒問題。
+window.HABIT_FCM_VAPID_KEY = "BLfS_eqE-zrEY01vfVWAibO6XmsO-NGcn3HZHnv9t_n-rww-YVzkSgclsPvXuefflhiyBojNb3xDbOPHFvOY7DI";
