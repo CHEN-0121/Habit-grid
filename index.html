@@ -72,7 +72,6 @@ thead .stick{background:var(--band);z-index:3}
 .summary .stick{font-family:var(--f-body);font-size:12px;color:var(--muted)}
 .chart td{height:84px;vertical-align:bottom;padding:4px 3px 2px}
 .chart .bar{width:100%;max-width:18px;margin:0 auto;background:var(--bar);border-radius:2px 2px 0 0;min-height:0;transition:height .3s}
-.chart .bar.full{background:var(--bar-done)}
 .wkprog td{padding:6px 8px}
 .wkprog .meter{height:10px}
 .wkprog span{display:block;font-family:var(--f-num);font-size:11px;color:var(--muted);margin-top:3px}
@@ -141,6 +140,31 @@ table{min-width:100%}
 .err{color:var(--danger);font-size:13px;min-height:1em}
 .linkbtn{border:0;background:none;color:var(--accent);padding:0;text-decoration:underline;font-size:12px;align-self:flex-start}
 .backup{display:flex;gap:8px;flex-wrap:wrap;border-top:1px solid var(--line);padding-top:12px}
+
+/* daily completion-rate line chart: an SVG overlay whose points are measured from the day columns below */
+.summary .lchart td{height:96px;padding:0;vertical-align:bottom}
+.summary .lchart .stick{padding:0 10px 6px}
+.lplot{position:relative;height:96px}
+.lplot svg{position:absolute;inset:0;width:100%;height:100%;overflow:visible}
+.lplot text{font-family:var(--f-num);font-size:10px;fill:var(--muted)}
+.g-ref{stroke:var(--line-strong);stroke-width:1;stroke-dasharray:3 3;opacity:.7}
+.g-base{stroke:var(--line);stroke-width:1}
+.g-area{fill:var(--accent);opacity:.16}
+.g-line{fill:none;stroke:var(--accent);stroke-width:2;stroke-linejoin:round;stroke-linecap:round}
+.g-dot{fill:var(--accent);stroke:var(--sheet);stroke-width:2}
+.summary .pct td{font-size:11px;color:var(--muted)}
+.chart .bar.alt{background:var(--accent)}
+
+/* weekday schedule */
+.erow{padding-bottom:10px;border-bottom:1px dashed var(--line)}
+.erow input:disabled{opacity:.6}
+.edays{grid-column:1/-1;display:flex;flex-wrap:wrap;align-items:center;gap:4px;font-size:12px;color:var(--muted)}
+.edays > span:first-child{margin-right:4px}
+.edays button{border:1px solid var(--line-strong);background:transparent;border-radius:999px;width:32px;height:32px;padding:0;font-size:12px}
+.edays button[aria-pressed="true"]{background:var(--accent);border-color:var(--accent);color:var(--sheet);font-weight:700}
+.edays .ehint{margin-left:6px}
+td.off .rest{color:var(--line-strong)}
+.trest{padding:12px 14px;font-size:13px;color:var(--muted)}
 </style>
 <script src="firebase-config.js"></script>
 </head>
@@ -203,7 +227,7 @@ table{min-width:100%}
 
   <section class="editor" id="editor" hidden>
     <h2>習慣清單</h2>
-    <p>「月目標」是一個月內想完成的天數。修改後會自動儲存，所有月份共用同一份清單。</p>
+    <p>「月目標」是一個月內想完成的天數。只在固定星期做的習慣(例如一三五健身),點選要做的星期，月目標會自動算。修改後會自動儲存，所有月份共用同一份清單。</p>
     <div class="lbl"><span>習慣名稱</span><span>月目標(天)</span><span></span></div>
     <div id="elist" style="display:flex;flex-direction:column;gap:8px"></div>
     <div><button class="btn primary" id="addHabit">＋ 新增習慣</button></div>
@@ -222,12 +246,32 @@ table{min-width:100%}
   const DOW = ["日","一","二","三","四","五","六"];
   const LS_KEY = "habit-grid-v1";
   const DEFAULT_HABITS = [
-    ["06:00 起床",25],["運動 30 分鐘",20],["閱讀 20 頁",24],["記帳",27],
-    ["不喝酒",28],["社群媒體減量",22],["規劃今日行程",25],["冷水澡",18]
+    {name:"06:00 起床", goal:25},
+    {name:"健身", goal:31, days:[1,3,5]},
+    {name:"有氧(跑 5 公里或打籃球)", goal:31, days:[2,4]},
+    {name:"早睡(1 點以前)", goal:25},
+    {name:"吃乾淨食物", goal:25},
+    {name:"閱讀 20 頁", goal:24},
+    {name:"記帳", goal:27},
+    {name:"社群媒體減量", goal:22},
+    {name:"規劃今日行程", goal:25},
+    {name:"冷水澡", goal:18}
   ];
   const uid6 = () => Math.random().toString(36).slice(2,8);
   const esc = s => String(s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
   const pad = n => String(n).padStart(2,"0");
+
+  // 只在固定星期做的習慣存 days:[0-6](0=週日);舊資料沒有 days,視為每天都要做
+  const WEEK = [1,2,3,4,5,6,0];   // 編輯器從週一排到週日
+  const isWeekly = h => Array.isArray(h.days) && h.days.length > 0 && h.days.length < 7;
+  const onDay = (h,y,m,d) => !isWeekly(h) || h.days.includes(new Date(y,m,d).getDay());
+  function dueDays(h,y,m){ const n = new Date(y,m+1,0).getDate(); let c = 0; for(let d=1; d<=n; d++) if(onDay(h,y,m,d)) c++; return c; }
+  function goalOf(h,y,m){ const n = dueDays(h,y,m); return isWeekly(h) ? n : Math.max(1, Math.min(n, Number(h.goal)||n)); }
+  const doneCount = (h,y,m,arr) => arr.filter(d=>onDay(h,y,m,d)).length;
+  const goalLabel = (h,goal) => isWeekly(h) ? `每週${WEEK.filter(w=>h.days.includes(w)).map(w=>DOW[w]).join("")} · ${goal} 次` : `月目標 ${goal} 天`;
+  const mcOf = (y,m) => state.checks[`${y}-${pad(m+1)}`] || {};
+  const dueAt = (y,m,d) => state.habits.filter(h=>onDay(h,y,m,d)).length;
+  const doneAt = (y,m,d) => { const mc = mcOf(y,m); return state.habits.reduce((n,h)=>n+(onDay(h,y,m,d)&&mc[h.id]&&mc[h.id].includes(d)?1:0),0); };
 
   let state = null;
   let mode = "local";       // "cloud" | "local"
@@ -237,7 +281,7 @@ table{min-width:100%}
   let vy = now.getFullYear(), vm = now.getMonth();
 
   function freshState(){
-    return {habits: DEFAULT_HABITS.map(([name,goal])=>({id:uid6(),name,goal})), checks:{}};
+    return {habits: DEFAULT_HABITS.map(h=>({id:uid6(), ...JSON.parse(JSON.stringify(h))})), checks:{}};
   }
   function readLocal(){
     try{ const s = localStorage.getItem(LS_KEY); if(s){ const o = JSON.parse(s); if(o && Array.isArray(o.habits)) return o; } }catch(e){}
@@ -296,7 +340,8 @@ table{min-width:100%}
       cur.push(d);
     }
     const lastOfWeek = new Set(weeks.map(w=>w[w.length-1]));
-    const doneOn = d => habits.reduce((n,h)=>n + (mc[h.id]&&mc[h.id].includes(d)?1:0),0);
+    const wkOf = {}; weeks.forEach((w,i)=>w.forEach(d=>{ wkOf[d] = i; }));
+    const doneOn = d => doneAt(vy,vm,d), dueOn = d => dueAt(vy,vm,d);
     const H = habits.length;
     const dc = d => `day${lastOfWeek.has(d)?" wk-end":""}${isToday(d)?" today-col":""}`;
 
@@ -310,23 +355,25 @@ table{min-width:100%}
 
     // summary block
     html += "<tbody class='summary'>";
-    html += "<tr class='chart'><td class='stick'>每日完成數</td>";
-    for(let d=1; d<=days; d++){
-      const n = doneOn(d), pct = H ? n/H*100 : 0;
-      html += `<td class="${dc(d)}"><div class="bar${n===H&&H?" full":""}" style="height:${pct*0.7}px" title="${d} 日：${n}/${H}"></div></td>`;
-    }
-    html += "<td class='tot'></td></tr>";
-    const sumRow = (label, fn) => {
-      html += `<tr><td class="stick">${label}</td>`;
+    const sumRow = (label, fn, cls) => {
+      html += `<tr${cls?` class="${cls}"`:""}><td class="stick">${label}</td>`;
       for(let d=1; d<=days; d++){ const f = isFuture(d); html += `<td class="${dc(d)}${f?" future":""}">${f?"":fn(d)}</td>`; }
       html += "<td class='tot'></td></tr>";
     };
+    html += `<tr class="lchart"><td class="stick">每日完成率</td><td colspan="${days}"><div class="lplot" id="lplot"></div></td><td class="tot"></td></tr>`;
+    sumRow("完成率 %", d=>{ const due = dueOn(d); return due ? Math.round(doneOn(d)/due*100) : ""; }, "pct");
+    html += "<tr class='chart'><td class='stick'>每日完成數</td>";
+    for(let d=1; d<=days; d++){
+      const n = doneOn(d), due = dueOn(d), pct = due ? n/due*100 : 0;
+      html += `<td class="${dc(d)}"><div class="bar${wkOf[d]%2?" alt":""}" style="height:${pct*0.7}px" title="${d} 日：${n}/${due}"></div></td>`;
+    }
+    html += "<td class='tot'></td></tr>";
     sumRow("完成", d=>doneOn(d));
-    sumRow("目標", ()=>H);
-    sumRow("剩餘", d=>H-doneOn(d));
+    sumRow("目標", d=>dueOn(d));
+    sumRow("剩餘", d=>dueOn(d)-doneOn(d));
     html += "<tr class='wkprog'><td class='stick'>每週進度</td>";
     weeks.forEach(w=>{
-      const tot = w.length*H, done = w.reduce((s,d)=>s+doneOn(d),0), p = tot? Math.round(done/tot*100):0;
+      const tot = w.reduce((s,d)=>s+dueOn(d),0), done = w.reduce((s,d)=>s+doneOn(d),0), p = tot? Math.round(done/tot*100):0;
       html += `<td class="wk-end" colspan="${w.length}"><div class="meter"><i style="width:${p}%"></i></div><span>${done}/${tot} · ${p}%</span></td>`;
     });
     html += "<td class='tot'></td></tr></tbody>";
@@ -339,37 +386,64 @@ table{min-width:100%}
     }
     habits.forEach(h=>{
       const arr = mc[h.id] || [];
-      const cnt = arr.filter(d=>d<=days).length;
-      const goal = Math.max(1, Math.min(days, Number(h.goal)||days));
+      const cnt = doneCount(h, vy, vm, arr);
+      const goal = goalOf(h, vy, vm);
       const p = Math.min(100, Math.round(cnt/goal*100));
-      html += `<tr class="habit"><td class="stick"><span class="name" title="${esc(h.name)}">${esc(h.name)}</span><span class="goal">月目標 ${goal} 天</span></td>`;
+      html += `<tr class="habit"><td class="stick"><span class="name" title="${esc(h.name)}">${esc(h.name)}</span><span class="goal">${goalLabel(h, goal)}</span></td>`;
       for(let d=1; d<=days; d++){
         const f = isFuture(d), on = arr.includes(d);
+        if(!onDay(h, vy, vm, d)){ html += `<td class="${dc(d)} off${f?" future":""}"><span class="rest" aria-hidden="true">–</span></td>`; continue; }
         html += `<td class="${dc(d)}${f?" future":""}"><button class="cell" data-h="${h.id}" data-d="${d}" aria-pressed="${on}" aria-label="${esc(h.name)} ${vm+1}月${d}日"${f?" disabled":""}><span class="box"></span></button></td>`;
       }
       html += `<td class="tot${cnt>=goal?" hit":""}"><b>${cnt}</b> / ${goal}<div class="meter"><i style="width:${p}%"></i></div></td></tr>`;
     });
     html += "</tbody>";
     document.getElementById("grid").innerHTML = html;
-    renderStats(days, weeks, doneOn, isFuture, isToday);
+    drawLine();
+    renderStats(days, weeks, doneOn, dueOn, isFuture, isToday);
     renderToday();
   }
 
-  function renderStats(days, weeks, doneOn, isFuture, isToday){
+  // Points sit on the measured centers of the day-number header cells, so the line always lines up with the columns
+  function drawLine(){
+    const box = document.getElementById("lplot"); if(!box) return;
+    const W = box.clientWidth, Hh = box.clientHeight; if(!W) return;   // sheet hidden: redrawn when month view opens
+    const left = box.getBoundingClientRect().left, t0 = today0();
+    const Y = p => 8 + (1 - p/100) * (Hh - 12);
+    const pts = [];
+    document.querySelectorAll("#grid th.dnum").forEach((th,i)=>{
+      const d = i+1; if(new Date(vy,vm,d) > t0) return;
+      const due = dueAt(vy,vm,d); if(!due) return;
+      const r = th.getBoundingClientRect(), p = Math.round(doneAt(vy,vm,d)/due*100);
+      pts.push({x: +(r.left - left + r.width/2).toFixed(1), y: +Y(p).toFixed(1), d, p});
+    });
+    let s = `<svg viewBox="0 0 ${W} ${Hh}" aria-hidden="true">`;
+    s += `<line class="g-base" x1="0" x2="${W}" y1="${Y(0)}" y2="${Y(0)}"/>`;
+    s += `<line class="g-ref" x1="0" x2="${W}" y1="${Y(25)}" y2="${Y(25)}"/><text x="${W-4}" y="${Y(25)-3}" text-anchor="end">25%</text>`;
+    if(pts.length){
+      const line = pts.map((p,i)=>`${i?"L":"M"}${p.x} ${p.y}`).join(" ");
+      s += `<path class="g-area" d="${line} L${pts[pts.length-1].x} ${Y(0)} L${pts[0].x} ${Y(0)} Z"/>`;
+      s += `<path class="g-line" d="${line}"/>`;
+      s += pts.map(p=>`<circle class="g-dot" cx="${p.x}" cy="${p.y}" r="3.5"><title>${p.d} 日：${p.p}%</title></circle>`).join("");
+    }
+    box.innerHTML = s + "</svg>";
+  }
+
+  function renderStats(days, weeks, doneOn, dueOn, isFuture, isToday){
     const H = state.habits.length;
-    let elapsed = 0, done = 0;
-    for(let d=1; d<=days; d++){ if(!isFuture(d)){ elapsed++; done += doneOn(d); } }
-    const possible = elapsed*H, rate = possible ? Math.round(done/possible*100) : 0;
+    let possible = 0, done = 0;
+    for(let d=1; d<=days; d++){ if(!isFuture(d)){ possible += dueOn(d); done += doneOn(d); } }
+    const rate = possible ? Math.round(done/possible*100) : 0;
     let todayTxt = "—", todayP = 0;
-    for(let d=1; d<=days; d++) if(isToday(d)){ const n = doneOn(d); todayTxt = `${n}<small> / ${H}</small>`; todayP = H? n/H*100:0; }
-    // streak: consecutive past days (ending today or yesterday) with all habits done — across this view month
+    for(let d=1; d<=days; d++) if(isToday(d)){ const n = doneOn(d), due = dueOn(d); todayTxt = `${n}<small> / ${due}</small>`; todayP = due ? n/due*100 : 0; }
+    // streak: consecutive past days (ending today or yesterday) with all scheduled habits done — days with nothing scheduled are skipped
     let streak = 0;
     for(let d=days; d>=1; d--){
       if(isFuture(d)) continue;
-      const full = H && doneOn(d)===H;
-      if(full) streak++; else if(isToday(d)) continue; else break;
+      const due = dueOn(d); if(!due) continue;
+      if(doneOn(d)===due) streak++; else if(isToday(d)) continue; else break;
     }
-    const goals = state.habits.filter(h=>{ const arr = monthChecks(false)[h.id]||[]; return arr.length >= Math.min(days, Number(h.goal)||days); }).length;
+    const goals = state.habits.filter(h=>doneCount(h, vy, vm, monthChecks(false)[h.id]||[]) >= goalOf(h, vy, vm)).length;
     document.getElementById("stats").innerHTML =
       `<div class="stat"><span class="k">本月完成率</span><span class="v">${rate}<small>%</small></span><div class="meter"><i style="width:${rate}%"></i></div></div>`+
       `<div class="stat"><span class="k">今日進度</span><span class="v">${todayTxt}</span><div class="meter"><i style="width:${todayP}%"></i></div></div>`+
@@ -381,16 +455,20 @@ table{min-width:100%}
   // ---------- editor ----------
   function renderEditor(){
     const el = document.getElementById("elist");
-    el.innerHTML = state.habits.map((h,i)=>`
+    el.innerHTML = state.habits.map((h,i)=>{
+      const wk = isWeekly(h);
+      return `
       <div class="erow" data-id="${h.id}">
         <input id="n-${h.id}" data-f="name" value="${esc(h.name)}" maxlength="40" aria-label="習慣名稱">
-        <input id="g-${h.id}" data-f="goal" type="number" min="1" max="31" value="${esc(h.goal)}" aria-label="月目標天數">
+        <input id="g-${h.id}" data-f="goal" type="number" min="1" max="31" value="${wk ? goalOf(h,vy,vm) : esc(h.goal)}" aria-label="月目標天數"${wk ? ' disabled title="依照星期自動計算"' : ""}>
         <div class="acts">
           <button class="icon" data-act="up" aria-label="上移"${i===0?" disabled":""}>↑</button>
           <button class="icon" data-act="down" aria-label="下移"${i===state.habits.length-1?" disabled":""}>↓</button>
           <button class="icon del" data-act="del" aria-label="刪除">✕</button>
         </div>
-      </div>`).join("");
+        <div class="edays" role="group" aria-label="要做的星期"><span>要做的日子</span>${WEEK.map(w=>`<button data-act="dow" data-w="${w}" aria-pressed="${!wk || h.days.includes(w)}" aria-label="星期${DOW[w]}">${DOW[w]}</button>`).join("")}<span class="ehint">${wk ? "月目標依星期自動計算" : "每天"}</span></div>
+      </div>`;
+    }).join("");
   }
   document.getElementById("elist").addEventListener("input", e=>{
     const row = e.target.closest(".erow"); if(!row) return;
@@ -408,8 +486,15 @@ table{min-width:100%}
       if(!b.classList.contains("armed")){ b.classList.add("armed"); b.textContent="確定刪除"; setTimeout(()=>{ if(b.isConnected){ b.classList.remove("armed"); b.textContent="✕"; } },3000); return; }
       const id = state.habits[i].id; state.habits.splice(i,1);
       Object.values(state.checks).forEach(m=>{ delete m[id]; });
+    } else if(b.dataset.act==="dow"){
+      const h = state.habits[i], w = +b.dataset.w;
+      let ds = isWeekly(h) ? h.days.slice() : [0,1,2,3,4,5,6];
+      ds = ds.includes(w) ? ds.filter(x=>x!==w) : ds.concat(w).sort((a,b)=>a-b);
+      if(!ds.length) return;   // 至少保留一天
+      if(ds.length===7) delete h.days; else h.days = ds;
     } else return;
     renderEditor(); render(); scheduleSave();
+    if(b.dataset.act==="dow"){ const nb = document.querySelector(`.erow[data-id="${row.dataset.id}"] [data-w="${b.dataset.w}"]`); if(nb) nb.focus(); }
   });
   document.getElementById("addHabit").addEventListener("click", ()=>{
     const h = {id:uid6(), name:"新習慣", goal:20}; state.habits.push(h);
@@ -435,18 +520,18 @@ table{min-width:100%}
   }
   function renderToday(){
     const y = sd.getFullYear(), m = sd.getMonth(), d = sd.getDate();
-    const mc = state.checks[`${y}-${pad(m+1)}`] || {};
-    const days = new Date(y, m+1, 0).getDate();
+    const mc = mcOf(y, m);
     const isT = sd.getTime() === today0().getTime();
     document.getElementById("dLabel").textContent = `${m+1} 月 ${d} 日(${DOW[sd.getDay()]})${isT?" · 今天":""}`;
     document.getElementById("dNext").disabled = isT;
     let n = 0;
-    document.getElementById("tlist").innerHTML = state.habits.length ? state.habits.map(h=>{
+    const todo = state.habits.filter(h=>onDay(h,y,m,d)), rest = state.habits.filter(h=>!onDay(h,y,m,d));
+    document.getElementById("tlist").innerHTML = state.habits.length ? todo.map(h=>{
       const arr = mc[h.id] || [], on = arr.includes(d); if(on) n++;
-      const goal = Math.max(1, Math.min(days, Number(h.goal)||days));
-      return `<li class="titem"><button data-h="${h.id}" aria-pressed="${on}"><span class="box"></span><span class="tn">${esc(h.name)}</span><span class="tm">本月 ${arr.length}/${goal}</span></button></li>`;
-    }).join("") : `<li class="titem"><div class="empty">還沒有任何習慣。按「編輯習慣」新增第一個。</div></li>`;
-    document.getElementById("dCount").textContent = `完成 ${n} / ${state.habits.length}`;
+      return `<li class="titem"><button data-h="${h.id}" aria-pressed="${on}"><span class="box"></span><span class="tn">${esc(h.name)}</span><span class="tm">本月 ${doneCount(h,y,m,arr)}/${goalOf(h,y,m)}</span></button></li>`;
+    }).join("") + (rest.length ? `<li class="titem trest">今天不用做：${rest.map(h=>esc(h.name)).join("、")}</li>` : "")
+      : `<li class="titem"><div class="empty">還沒有任何習慣。按「編輯習慣」新增第一個。</div></li>`;
+    document.getElementById("dCount").textContent = `完成 ${n} / ${todo.length}`;
   }
   document.getElementById("tlist").addEventListener("click", e=>{
     const b = e.target.closest("button[data-h]"); if(!b) return;
@@ -471,8 +556,11 @@ table{min-width:100%}
     document.getElementById("vToday").setAttribute("aria-pressed", String(v==="today"));
     document.getElementById("vMonth").setAttribute("aria-pressed", String(v==="month"));
     try{ localStorage.setItem(LS_KEY+"-view", v); }catch(e){}
-    if(v==="month") scrollToToday();
+    if(v==="month"){ drawLine(); scrollToToday(); }
   }
+  let rzTimer = null;
+  window.addEventListener("resize", ()=>{ clearTimeout(rzTimer); rzTimer = setTimeout(drawLine, 120); });
+  if(document.fonts) document.fonts.ready.then(drawLine);
   document.getElementById("vToday").onclick = ()=>setView("today");
   document.getElementById("vMonth").onclick = ()=>setView("month");
 
