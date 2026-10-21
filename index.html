@@ -165,6 +165,26 @@ table{min-width:100%}
 .edays .ehint{margin-left:6px}
 td.off .rest{color:var(--line-strong)}
 .trest{padding:12px 14px;font-size:13px;color:var(--muted)}
+
+/* monthly review */
+.review{background:var(--sheet);border:1px solid var(--line-strong);border-radius:8px;padding:16px;display:flex;flex-direction:column;gap:14px}
+.rhead{display:flex;flex-wrap:wrap;align-items:baseline;gap:6px 12px}
+.rhead h2{margin:0;font-family:var(--f-display);font-size:20px}
+.badge{font-size:12px;padding:2px 10px;border-radius:999px;border:1px solid var(--line-strong);color:var(--muted)}
+.badge.closed{background:var(--accent);border-color:var(--accent);color:var(--sheet);font-weight:700}
+.rsum{margin:0;font-size:14px;line-height:1.8}
+.rsum b{color:var(--accent)}
+.review .stats{grid-template-columns:repeat(auto-fit,minmax(140px,1fr))}
+.rcols{display:grid;grid-template-columns:minmax(0,3fr) minmax(0,2fr);gap:12px 28px}
+@media (max-width:760px){.rcols{grid-template-columns:minmax(0,1fr)}}
+.rcols h3{margin:0 0 4px;font-size:12px;color:var(--muted);font-weight:500;letter-spacing:.06em}
+.rcols h3:not(:first-child){margin-top:14px}
+.rrow{display:grid;grid-template-columns:minmax(0,8.5em) minmax(0,1fr) 3em 4.2em;gap:10px;align-items:center;font-size:13px;padding:6px 0;border-top:1px solid var(--line)}
+.rrow .rn{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.rrow .rv{font-family:var(--f-num);text-align:right}
+.rrow .rg{font-family:var(--f-num);font-size:12px;color:var(--muted);text-align:right;white-space:nowrap}
+.rrow .rg.hit{color:var(--accent);font-weight:600}
+.rsmall .rrow{grid-template-columns:4.5em minmax(0,1fr) 3em}
 </style>
 <script src="firebase-config.js"></script>
 </head>
@@ -239,6 +259,8 @@ td.off .rest{color:var(--line-strong)}
   </section>
 
   <div class="sheet" id="sheet"><table id="grid"></table></div>
+
+  <section class="review" id="review" aria-label="月回顧"></section>
 </div>
 
 <script>
@@ -265,13 +287,34 @@ td.off .rest{color:var(--line-strong)}
   const WEEK = [1,2,3,4,5,6,0];   // 編輯器從週一排到週日
   const isWeekly = h => Array.isArray(h.days) && h.days.length > 0 && h.days.length < 7;
   const onDay = (h,y,m,d) => !isWeekly(h) || h.days.includes(new Date(y,m,d).getDay());
-  function dueDays(h,y,m){ const n = new Date(y,m+1,0).getDate(); let c = 0; for(let d=1; d<=n; d++) if(onDay(h,y,m,d)) c++; return c; }
-  function goalOf(h,y,m){ const n = dueDays(h,y,m); return isWeekly(h) ? n : Math.max(1, Math.min(n, Number(h.goal)||n)); }
+  // 從第一次打勾的那天才開始算：之前的日子不列入目標與完成率，月中才開始用的月份不會被拉低
+  let START = null;
+  function findStart(){
+    let best = null;
+    for(const k in state.checks){
+      const [y,m] = k.split("-").map(Number); if(!y || !m) continue;
+      for(const arr of Object.values(state.checks[k] || {})){
+        if(!Array.isArray(arr) || !arr.length) continue;
+        const t = new Date(y, m-1, Math.min(...arr));
+        if(!best || t < best) best = t;
+      }
+    }
+    return best;
+  }
+  const counted = (y,m,d) => !START || new Date(y,m,d) >= START;
+  const dueOnDay = (h,y,m,d) => onDay(h,y,m,d) && counted(y,m,d);
+  function dueDays(h,y,m){ const n = new Date(y,m+1,0).getDate(); let c = 0; for(let d=1; d<=n; d++) if(dueOnDay(h,y,m,d)) c++; return c; }
+  // 每天做的習慣：只算到一部分的月份，月目標照比例縮小
+  function goalOf(h,y,m){
+    const n = dueDays(h,y,m); if(isWeekly(h) || !n) return n;
+    const total = new Date(y,m+1,0).getDate(), g = Math.min(total, Number(h.goal)||total);
+    return Math.min(n, Math.max(1, Math.round(g * n / total)));
+  }
   const doneCount = (h,y,m,arr) => arr.filter(d=>onDay(h,y,m,d)).length;
   const goalLabel = (h,goal) => isWeekly(h) ? `每週${WEEK.filter(w=>h.days.includes(w)).map(w=>DOW[w]).join("")} · ${goal} 次` : `月目標 ${goal} 天`;
   const mcOf = (y,m) => state.checks[`${y}-${pad(m+1)}`] || {};
-  const dueAt = (y,m,d) => state.habits.filter(h=>onDay(h,y,m,d)).length;
-  const doneAt = (y,m,d) => { const mc = mcOf(y,m); return state.habits.reduce((n,h)=>n+(onDay(h,y,m,d)&&mc[h.id]&&mc[h.id].includes(d)?1:0),0); };
+  const dueAt = (y,m,d) => state.habits.filter(h=>dueOnDay(h,y,m,d)).length;
+  const doneAt = (y,m,d) => { const mc = mcOf(y,m); return state.habits.reduce((n,h)=>n+(dueOnDay(h,y,m,d)&&mc[h.id]&&mc[h.id].includes(d)?1:0),0); };
 
   let state = null;
   let mode = "local";       // "cloud" | "local"
@@ -324,6 +367,7 @@ td.off .rest{color:var(--line-strong)}
 
   // ---------- render ----------
   function render(){
+    START = findStart();
     const days = new Date(vy, vm+1, 0).getDate();
     const habits = state.habits;
     const mc = monthChecks(false);
@@ -368,13 +412,13 @@ td.off .rest{color:var(--line-strong)}
       html += `<td class="${dc(d)}"><div class="bar${wkOf[d]%2?" alt":""}" style="height:${pct*0.7}px" title="${d} 日：${n}/${due}"></div></td>`;
     }
     html += "<td class='tot'></td></tr>";
-    sumRow("完成", d=>doneOn(d));
-    sumRow("目標", d=>dueOn(d));
-    sumRow("剩餘", d=>dueOn(d)-doneOn(d));
+    sumRow("完成", d=>dueOn(d) ? doneOn(d) : "");
+    sumRow("目標", d=>dueOn(d) || "");
+    sumRow("剩餘", d=>dueOn(d) ? dueOn(d)-doneOn(d) : "");
     html += "<tr class='wkprog'><td class='stick'>每週進度</td>";
     weeks.forEach(w=>{
       const tot = w.reduce((s,d)=>s+dueOn(d),0), done = w.reduce((s,d)=>s+doneOn(d),0), p = tot? Math.round(done/tot*100):0;
-      html += `<td class="wk-end" colspan="${w.length}"><div class="meter"><i style="width:${p}%"></i></div><span>${done}/${tot} · ${p}%</span></td>`;
+      html += `<td class="wk-end" colspan="${w.length}"><div class="meter"><i style="width:${p}%"></i></div><span>${tot ? `${done}/${tot} · ${p}%` : "—"}</span></td>`;
     });
     html += "<td class='tot'></td></tr></tbody>";
     html += `<tbody><tr class="gap"><td class="stick" style="padding:0"></td><td colspan="${days+1}"></td></tr></tbody>`;
@@ -388,20 +432,88 @@ td.off .rest{color:var(--line-strong)}
       const arr = mc[h.id] || [];
       const cnt = doneCount(h, vy, vm, arr);
       const goal = goalOf(h, vy, vm);
-      const p = Math.min(100, Math.round(cnt/goal*100));
+      const p = goal ? Math.min(100, Math.round(cnt/goal*100)) : 0;
       html += `<tr class="habit"><td class="stick"><span class="name" title="${esc(h.name)}">${esc(h.name)}</span><span class="goal">${goalLabel(h, goal)}</span></td>`;
       for(let d=1; d<=days; d++){
         const f = isFuture(d), on = arr.includes(d);
         if(!onDay(h, vy, vm, d)){ html += `<td class="${dc(d)} off${f?" future":""}"><span class="rest" aria-hidden="true">–</span></td>`; continue; }
         html += `<td class="${dc(d)}${f?" future":""}"><button class="cell" data-h="${h.id}" data-d="${d}" aria-pressed="${on}" aria-label="${esc(h.name)} ${vm+1}月${d}日"${f?" disabled":""}><span class="box"></span></button></td>`;
       }
-      html += `<td class="tot${cnt>=goal?" hit":""}"><b>${cnt}</b> / ${goal}<div class="meter"><i style="width:${p}%"></i></div></td></tr>`;
+      html += `<td class="tot${goal && cnt>=goal?" hit":""}"><b>${cnt}</b> / ${goal}<div class="meter"><i style="width:${p}%"></i></div></td></tr>`;
     });
     html += "</tbody>";
     document.getElementById("grid").innerHTML = html;
     drawLine();
     renderStats(days, weeks, doneOn, dueOn, isFuture, isToday);
+    renderReview(weeks);
     renderToday();
+  }
+
+  // ---------- monthly review ----------
+  function monthSummary(y,m){
+    const days = new Date(y,m+1,0).getDate(), t0 = today0();
+    let last = 0; for(let d=1; d<=days; d++) if(new Date(y,m,d) <= t0) last = d;
+    let possible = 0, done = 0;
+    for(let d=1; d<=last; d++){ possible += dueAt(y,m,d); done += doneAt(y,m,d); }
+    return {days, last, possible, done, rate: possible ? Math.round(done/possible*100) : null};
+  }
+  function renderReview(weeks){
+    const el = document.getElementById("review");
+    const y = vy, m = vm, S = monthSummary(y,m);
+    const closed = new Date(y,m,S.days) < today0(), left = S.days - S.last;
+    let html = `<div class="rhead"><h2>${y} 年 ${m+1} 月回顧</h2>` +
+      (closed ? `<span class="badge closed">已結算</span>`
+        : S.last ? `<span class="badge">進行中 · ${left ? `還剩 ${left} 天，月底自動結算` : "今天是最後一天"}</span>`
+        : `<span class="badge">還沒開始</span>`) + `</div>`;
+    if(S.rate === null){ el.innerHTML = html + `<p class="rsum">這個月沒有可以統計的紀錄。</p>`; return; }
+
+    const rateOf = (p,n) => p ? Math.round(n/p*100) : null;
+    let perfect = 0, dueDaysN = 0, run = 0, bestRun = 0;
+    for(let d=1; d<=S.last; d++){
+      const due = dueAt(y,m,d); if(!due) continue;
+      dueDaysN++;
+      if(doneAt(y,m,d) === due){ perfect++; run++; bestRun = Math.max(bestRun, run); } else run = 0;
+    }
+    const P = m ? monthSummary(y, m-1) : monthSummary(y-1, 11);
+    const diff = P.rate === null ? null : S.rate - P.rate;
+
+    const mc = mcOf(y,m);
+    const hs = state.habits.map(h=>{
+      const arr = mc[h.id] || []; let due = 0, dn = 0;
+      for(let d=1; d<=S.last; d++) if(dueOnDay(h,y,m,d)){ due++; if(arr.includes(d)) dn++; }
+      const goal = goalOf(h,y,m), cnt = doneCount(h,y,m,arr);
+      return {h, rate: rateOf(due,dn), goal, cnt, hit: goal > 0 && cnt >= goal};
+    });
+    const ranked = hs.filter(x=>x.rate!==null).sort((a,b)=>b.rate-a.rate).concat(hs.filter(x=>x.rate===null));
+    const rated = ranked.filter(x=>x.rate!==null);
+    const goalsHit = hs.filter(x=>x.hit).length;
+
+    const wk = weeks.map((w,i)=>{ let p = 0, n = 0; w.forEach(d=>{ if(d<=S.last){ p += dueAt(y,m,d); n += doneAt(y,m,d); } }); return {i, rate: rateOf(p,n)}; });
+    const wd = WEEK.map(w=>{ let p = 0, n = 0; for(let d=1; d<=S.last; d++) if(new Date(y,m,d).getDay()===w){ p += dueAt(y,m,d); n += doneAt(y,m,d); } return {w, rate: rateOf(p,n)}; });
+
+    const sents = [`這個月${closed ? "" : "到今天為止"}的完成率是 <b>${S.rate}%</b>` +
+      (diff === null ? "" : diff > 0 ? `,比上個月進步 ${diff} 個百分點` : diff < 0 ? `,比上個月退步 ${-diff} 個百分點` : `,和上個月一樣`)];
+    if(rated.length > 1 && rated[0].rate !== rated[rated.length-1].rate)
+      sents.push(`最穩定的是「${esc(rated[0].h.name)}」(${rated[0].rate}%),最需要加強的是「${esc(rated[rated.length-1].h.name)}」(${rated[rated.length-1].rate}%)`);
+    const wdr = wd.filter(x=>x.rate!==null).sort((a,b)=>b.rate-a.rate);
+    if(wdr.length > 1 && wdr[0].rate !== wdr[wdr.length-1].rate)
+      sents.push(`週${DOW[wdr[0].w]}表現最好，週${DOW[wdr[wdr.length-1].w]}最容易鬆懈`);
+    sents.push(perfect ? `有 ${perfect} 天全部完成，最長連續 ${bestRun} 天` : `還沒有全部完成的日子`);
+    html += `<p class="rsum">${sents.join("。")}。</p>`;
+
+    html += `<div class="stats">` +
+      `<div class="stat"><span class="k">完成率</span><span class="v">${S.rate}<small>%</small></span><span class="k">${diff === null ? "上個月沒有紀錄" : `上個月 ${P.rate}%(${diff > 0 ? "▲" : diff < 0 ? "▼" : "＝"} ${Math.abs(diff)})`}</span></div>` +
+      `<div class="stat"><span class="k">全部完成的天數</span><span class="v">${perfect}<small> / ${dueDaysN} 天</small></span></div>` +
+      `<div class="stat"><span class="k">最長連續全勤</span><span class="v">${bestRun}<small> 天</small></span></div>` +
+      `<div class="stat"><span class="k">${closed ? "達成月目標" : "已達月目標"}</span><span class="v">${goalsHit}<small> / ${hs.length} 項</small></span></div>` +
+      `</div>`;
+
+    const row = (name, rate, extra) => `<div class="rrow"><span class="rn" title="${name}">${name}</span><div class="meter"><i style="width:${rate||0}%"></i></div><span class="rv">${rate === null ? "—" : rate + "%"}</span>${extra === undefined ? "" : extra}</div>`;
+    html += `<div class="rcols"><div><h3>各習慣表現(依完成率排序)</h3>` +
+      ranked.map(x=>row(esc(x.h.name), x.rate, `<span class="rg${x.hit ? " hit" : ""}">${x.cnt}/${x.goal}${x.hit ? " ✓" : ""}</span>`)).join("") +
+      `</div><div class="rsmall"><h3>每週完成率</h3>` + wk.map(x=>row(`第 ${x.i+1} 週`, x.rate)).join("") +
+      `<h3>星期幾最穩定</h3>` + wd.map(x=>row(`週${DOW[x.w]}`, x.rate)).join("") + `</div></div>`;
+    el.innerHTML = html;
   }
 
   // Points sit on the measured centers of the day-number header cells, so the line always lines up with the columns
@@ -443,7 +555,7 @@ td.off .rest{color:var(--line-strong)}
       const due = dueOn(d); if(!due) continue;
       if(doneOn(d)===due) streak++; else if(isToday(d)) continue; else break;
     }
-    const goals = state.habits.filter(h=>doneCount(h, vy, vm, monthChecks(false)[h.id]||[]) >= goalOf(h, vy, vm)).length;
+    const goals = state.habits.filter(h=>{ const g = goalOf(h, vy, vm); return g && doneCount(h, vy, vm, monthChecks(false)[h.id]||[]) >= g; }).length;
     document.getElementById("stats").innerHTML =
       `<div class="stat"><span class="k">本月完成率</span><span class="v">${rate}<small>%</small></span><div class="meter"><i style="width:${rate}%"></i></div></div>`+
       `<div class="stat"><span class="k">今日進度</span><span class="v">${todayTxt}</span><div class="meter"><i style="width:${todayP}%"></i></div></div>`+
@@ -454,6 +566,7 @@ td.off .rest{color:var(--line-strong)}
 
   // ---------- editor ----------
   function renderEditor(){
+    START = findStart();
     const el = document.getElementById("elist");
     el.innerHTML = state.habits.map((h,i)=>{
       const wk = isWeekly(h);
