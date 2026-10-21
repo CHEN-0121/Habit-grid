@@ -16,16 +16,16 @@
 /* Layout: ledger-style sheet — sticky habit column on the left, days grouped by week, daily summary + bar chart sit above the check grid on the same columns */
 :root{
   --bg:#e9efe9; --sheet:#f6f9f5; --ink:#1f2a24; --muted:#5f6f66; --line:#c9d6cc; --line-strong:#9fb3a5;
-  --band:#d5e3d8; --accent:#2f6b45; --accent-soft:#bcd7c3; --bar:#2b3a6b; --bar-done:#2f6b45; --today:#fff3c4; --future:#eef2ee;
+  --band:#d5e3d8; --accent:#2f6b45; --accent-soft:#bcd7c3; --bar:#2b3a6b; --bar-done:#2f6b45; --today:#fff3c4; --future:#eef2ee; --play:#d6e9dc;
   --danger:#a23b2a;
   --f-display:"Noto Serif TC","Songti TC",serif; --f-body:"Noto Sans TC","PingFang TC","Microsoft JhengHei",sans-serif; --f-num:"IBM Plex Mono",ui-monospace,Menlo,monospace;
 }
 @media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
   --bg:#121915; --sheet:#18211c; --ink:#e3ece5; --muted:#93a59a; --line:#2c3a31; --line-strong:#41544a; --band:#203029;
-  --accent:#7cc495; --accent-soft:#2c4a37; --bar:#8c9de0; --bar-done:#7cc495; --today:#3a3418; --future:#1b231e; --danger:#e58a77; color-scheme:dark}}
+  --accent:#7cc495; --accent-soft:#2c4a37; --bar:#8c9de0; --bar-done:#7cc495; --today:#3a3418; --future:#1b231e; --play:#21392b; --danger:#e58a77; color-scheme:dark}}
 :root[data-theme="dark"]{
   --bg:#121915; --sheet:#18211c; --ink:#e3ece5; --muted:#93a59a; --line:#2c3a31; --line-strong:#41544a; --band:#203029;
-  --accent:#7cc495; --accent-soft:#2c4a37; --bar:#8c9de0; --bar-done:#7cc495; --today:#3a3418; --future:#1b231e; --danger:#e58a77; color-scheme:dark}
+  --accent:#7cc495; --accent-soft:#2c4a37; --bar:#8c9de0; --bar-done:#7cc495; --today:#3a3418; --future:#1b231e; --play:#21392b; --danger:#e58a77; color-scheme:dark}
 *{box-sizing:border-box}
 [hidden]{display:none!important}
 html{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
@@ -166,6 +166,17 @@ table{min-width:100%}
 td.off .rest{color:var(--line-strong)}
 .trest{padding:12px 14px;font-size:13px;color:var(--muted)}
 
+/* month replay */
+.rpbar{position:sticky;top:8px;z-index:6;display:flex;flex-wrap:wrap;align-items:center;gap:8px 10px;background:var(--sheet);border:1px solid var(--accent);border-radius:8px;padding:8px 12px;box-shadow:0 4px 14px rgba(0,0,0,.12)}
+.rp-title{font-size:13px;color:var(--accent);font-weight:700}
+.rp-seek{flex:1 1 220px;display:flex;align-items:center;gap:10px;font-family:var(--f-num);font-size:12px;color:var(--muted);white-space:nowrap}
+.rp-seek input{flex:1;min-width:120px;accent-color:var(--accent)}
+.play-col{background:var(--play)!important}
+.replaying .cell:disabled:not([data-fut]) .box{border-style:solid;opacity:1}
+.cell.pop .box{animation:pop .3s ease-out both}
+@keyframes pop{0%{transform:scale(.3)}60%{transform:scale(1.3)}100%{transform:scale(1)}}
+@media (prefers-reduced-motion:reduce){.cell.pop .box{animation:none}}
+
 /* monthly review */
 .review{background:var(--sheet);border:1px solid var(--line-strong);border-radius:8px;padding:16px;display:flex;flex-direction:column;gap:14px}
 .rhead{display:flex;flex-wrap:wrap;align-items:baseline;gap:6px 12px}
@@ -201,6 +212,7 @@ td.off .rest{color:var(--line-strong)}
       <strong id="mlabel">—</strong>
       <button class="btn" id="next" aria-label="下個月">›</button>
       <button class="btn" id="thismonth">本月</button>
+      <button class="btn" id="replayBtn">▶ 回放</button>
     </div>
   </header>
 
@@ -258,6 +270,17 @@ td.off .rest{color:var(--line-strong)}
     </div>
   </section>
 
+  <div class="rpbar" id="rpbar" hidden role="group" aria-label="回放控制">
+    <span class="rp-title">回放中</span>
+    <button class="btn" id="rpPlay">❚❚ 暫停</button>
+    <button class="btn" id="rpRestart">↺ 重新播放</button>
+    <div class="seg" role="group" aria-label="播放速度" id="rpSpeed">
+      <button data-sp="0.5" aria-pressed="false">0.5x</button><button data-sp="1" aria-pressed="true">1x</button><button data-sp="2" aria-pressed="false">2x</button>
+    </div>
+    <label class="rp-seek"><input type="range" id="rpSeek" min="0" max="31" step="1" value="0" aria-label="播放到第幾天"><span id="rpDay"></span></label>
+    <button class="btn primary" id="rpEnd">結束回放</button>
+  </div>
+
   <div class="sheet" id="sheet"><table id="grid"></table></div>
 
   <section class="review" id="review" aria-label="月回顧"></section>
@@ -282,6 +305,7 @@ td.off .rest{color:var(--line-strong)}
   const uid6 = () => Math.random().toString(36).slice(2,8);
   const esc = s => String(s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
   const pad = n => String(n).padStart(2,"0");
+  const stableJSON = v => JSON.stringify(v, (k,x)=> x && typeof x === "object" && !Array.isArray(x) ? Object.keys(x).sort().reduce((o,kk)=>(o[kk]=x[kk], o), {}) : x);
 
   // 只在固定星期做的習慣存 days:[0-6](0=週日);舊資料沒有 days,視為每天都要做
   const WEEK = [1,2,3,4,5,6,0];   // 編輯器從週一排到週日
@@ -312,7 +336,9 @@ td.off .rest{color:var(--line-strong)}
   }
   const doneCount = (h,y,m,arr) => arr.filter(d=>onDay(h,y,m,d)).length;
   const goalLabel = (h,goal) => isWeekly(h) ? `每週${WEEK.filter(w=>h.days.includes(w)).map(w=>DOW[w]).join("")} · ${goal} 次` : `月目標 ${goal} 天`;
-  const mcOf = (y,m) => state.checks[`${y}-${pad(m+1)}`] || {};
+  // 回放中：統計只看「已播完的天」(RP.view),格子另外用 rpShown 判斷，真正的資料完全不動
+  let RP = null;
+  const mcOf = (y,m) => RP && RP.y===y && RP.m===m ? RP.view : (state.checks[`${y}-${pad(m+1)}`] || {});
   const dueAt = (y,m,d) => state.habits.filter(h=>dueOnDay(h,y,m,d)).length;
   const doneAt = (y,m,d) => { const mc = mcOf(y,m); return state.habits.reduce((n,h)=>n+(dueOnDay(h,y,m,d)&&mc[h.id]&&mc[h.id].includes(d)?1:0),0); };
 
@@ -370,9 +396,10 @@ td.off .rest{color:var(--line-strong)}
     START = findStart();
     const days = new Date(vy, vm+1, 0).getDate();
     const habits = state.habits;
-    const mc = monthChecks(false);
+    const mc = mcOf(vy, vm);
     const today = new Date(); today.setHours(0,0,0,0);
     const isFuture = d => new Date(vy,vm,d) > today;
+    const hideSum = d => isFuture(d) || (!!RP && d > RP.doneDay);   // 回放還沒播到的天，統計列先留白
     const isToday = d => vy===today.getFullYear() && vm===today.getMonth() && d===today.getDate();
     document.getElementById("mlabel").textContent = `${vy} 年 ${vm+1} 月`;
 
@@ -387,7 +414,7 @@ td.off .rest{color:var(--line-strong)}
     const wkOf = {}; weeks.forEach((w,i)=>w.forEach(d=>{ wkOf[d] = i; }));
     const doneOn = d => doneAt(vy,vm,d), dueOn = d => dueAt(vy,vm,d);
     const H = habits.length;
-    const dc = d => `day${lastOfWeek.has(d)?" wk-end":""}${isToday(d)?" today-col":""}`;
+    const dc = d => `day${lastOfWeek.has(d)?" wk-end":""}${isToday(d)?" today-col":""}${RP && d===RP.playDay?" play-col":""}`;
 
     let html = "<thead><tr><th class='stick' rowspan='3' style='vertical-align:bottom;font-size:12px;color:var(--ink);font-weight:700'>每日習慣</th>";
     weeks.forEach((w,i)=>{ html += `<th class="wkhead wk-end" colspan="${w.length}">第 ${i+1} 週</th>`; });
@@ -401,7 +428,7 @@ td.off .rest{color:var(--line-strong)}
     html += "<tbody class='summary'>";
     const sumRow = (label, fn, cls) => {
       html += `<tr${cls?` class="${cls}"`:""}><td class="stick">${label}</td>`;
-      for(let d=1; d<=days; d++){ const f = isFuture(d); html += `<td class="${dc(d)}${f?" future":""}">${f?"":fn(d)}</td>`; }
+      for(let d=1; d<=days; d++){ const f = isFuture(d); html += `<td class="${dc(d)}${f?" future":""}">${hideSum(d)?"":fn(d)}</td>`; }
       html += "<td class='tot'></td></tr>";
     };
     html += `<tr class="lchart"><td class="stick">每日完成率</td><td colspan="${days}"><div class="lplot" id="lplot"></div></td><td class="tot"></td></tr>`;
@@ -435,16 +462,20 @@ td.off .rest{color:var(--line-strong)}
       const p = goal ? Math.min(100, Math.round(cnt/goal*100)) : 0;
       html += `<tr class="habit"><td class="stick"><span class="name" title="${esc(h.name)}">${esc(h.name)}</span><span class="goal">${goalLabel(h, goal)}</span></td>`;
       for(let d=1; d<=days; d++){
-        const f = isFuture(d), on = arr.includes(d);
+        const f = isFuture(d), on = RP ? rpShown(h.id, d) : arr.includes(d);
         if(!onDay(h, vy, vm, d)){ html += `<td class="${dc(d)} off${f?" future":""}"><span class="rest" aria-hidden="true">–</span></td>`; continue; }
-        html += `<td class="${dc(d)}${f?" future":""}"><button class="cell" data-h="${h.id}" data-d="${d}" aria-pressed="${on}" aria-label="${esc(h.name)} ${vm+1}月${d}日"${f?" disabled":""}><span class="box"></span></button></td>`;
+        const pop = RP && on ? rpPopAge(h.id, d) : null;   // 剛播到的勾：負的 delay 讓重畫後動畫接著跑
+        html += `<td class="${dc(d)}${f?" future":""}"><button class="cell${pop===null?"":" pop"}"${pop===null?"":` style="animation-delay:-${pop}ms"`} data-h="${h.id}" data-d="${d}" aria-pressed="${on}" aria-label="${esc(h.name)} ${vm+1}月${d}日"${f?" data-fut":""}${f||RP?" disabled":""}><span class="box"></span></button></td>`;
       }
       html += `<td class="tot${goal && cnt>=goal?" hit":""}"><b>${cnt}</b> / ${goal}<div class="meter"><i style="width:${p}%"></i></div></td></tr>`;
     });
     html += "</tbody>";
     document.getElementById("grid").innerHTML = html;
+    document.getElementById("sheet").classList.toggle("replaying", !!RP);
     drawLine();
-    renderStats(days, weeks, doneOn, dueOn, isFuture, isToday);
+    renderStats(days, weeks, doneOn, dueOn, hideSum, isToday);
+    if(RP) return;   // 回放只動表格和總覽
+    document.getElementById("replayBtn").disabled = new Date(vy,vm,1) > today;
     renderReview(weeks);
     renderToday();
   }
@@ -524,7 +555,7 @@ td.off .rest{color:var(--line-strong)}
     const Y = p => 8 + (1 - p/100) * (Hh - 12);
     const pts = [];
     document.querySelectorAll("#grid th.dnum").forEach((th,i)=>{
-      const d = i+1; if(new Date(vy,vm,d) > t0) return;
+      const d = i+1; if(new Date(vy,vm,d) > t0 || (RP && d > RP.doneDay)) return;
       const due = dueAt(vy,vm,d); if(!due) return;
       const r = th.getBoundingClientRect(), p = Math.round(doneAt(vy,vm,d)/due*100);
       pts.push({x: +(r.left - left + r.width/2).toFixed(1), y: +Y(p).toFixed(1), d, p});
@@ -555,7 +586,7 @@ td.off .rest{color:var(--line-strong)}
       const due = dueOn(d); if(!due) continue;
       if(doneOn(d)===due) streak++; else if(isToday(d)) continue; else break;
     }
-    const goals = state.habits.filter(h=>{ const g = goalOf(h, vy, vm); return g && doneCount(h, vy, vm, monthChecks(false)[h.id]||[]) >= g; }).length;
+    const goals = state.habits.filter(h=>{ const g = goalOf(h, vy, vm); return g && doneCount(h, vy, vm, mcOf(vy, vm)[h.id]||[]) >= g; }).length;
     document.getElementById("stats").innerHTML =
       `<div class="stat"><span class="k">本月完成率</span><span class="v">${rate}<small>%</small></span><div class="meter"><i style="width:${rate}%"></i></div></div>`+
       `<div class="stat"><span class="k">今日進度</span><span class="v">${todayTxt}</span><div class="meter"><i style="width:${todayP}%"></i></div></div>`+
@@ -568,6 +599,9 @@ td.off .rest{color:var(--line-strong)}
   function renderEditor(){
     START = findStart();
     const el = document.getElementById("elist");
+    // 重畫時保留正在輸入的欄位和游標位置(例如另一台裝置剛好同步過來)
+    const a = document.activeElement, fid = a && el.contains(a) && a.id ? a.id : null;
+    let sel = null; try{ if(fid) sel = [a.selectionStart, a.selectionEnd, a.value]; }catch(e){}
     el.innerHTML = state.habits.map((h,i)=>{
       const wk = isWeekly(h);
       return `
@@ -582,6 +616,11 @@ td.off .rest{color:var(--line-strong)}
         <div class="edays" role="group" aria-label="要做的星期"><span>要做的日子</span>${WEEK.map(w=>`<button data-act="dow" data-w="${w}" aria-pressed="${!wk || h.days.includes(w)}" aria-label="星期${DOW[w]}">${DOW[w]}</button>`).join("")}<span class="ehint">${wk ? "月目標依星期自動計算" : "每天"}</span></div>
       </div>`;
     }).join("");
+    const n = fid && document.getElementById(fid);
+    if(n && !n.disabled){
+      if(sel && n.tagName === "INPUT"){ n.value = sel[2]; try{ n.setSelectionRange(sel[0], sel[1]); }catch(e){} }
+      n.focus({preventScroll:true});
+    }
   }
   document.getElementById("elist").addEventListener("input", e=>{
     const row = e.target.closest(".erow"); if(!row) return;
@@ -663,7 +702,9 @@ td.off .rest{color:var(--line-strong)}
 
   let view = null;
   function setView(v){
+    if(v !== "month") stopReplay();
     view = v;
+    document.getElementById("replayBtn").hidden = v !== "month";
     document.getElementById("todayView").hidden = v !== "today";
     document.getElementById("sheet").hidden = v !== "month";
     document.getElementById("vToday").setAttribute("aria-pressed", String(v==="today"));
@@ -687,10 +728,96 @@ td.off .rest{color:var(--line-strong)}
     const nb = document.querySelector(`.cell[data-h="${hid}"][data-d="${d}"]`); if(nb) nb.focus({preventScroll:true});
     scheduleSave();
   });
-  function go(dm){ vm += dm; if(vm<0){vm=11;vy--;} if(vm>11){vm=0;vy++;} render(); scrollToToday(); }
+  function go(dm){ stopReplay(); vm += dm; if(vm<0){vm=11;vy--;} if(vm>11){vm=0;vy++;} render(); scrollToToday(); }
   document.getElementById("prev").onclick = ()=>go(-1);
   document.getElementById("next").onclick = ()=>go(1);
-  document.getElementById("thismonth").onclick = ()=>{ vy=now.getFullYear(); vm=now.getMonth(); render(); scrollToToday(); };
+  document.getElementById("thismonth").onclick = ()=>{ stopReplay(); vy=now.getFullYear(); vm=now.getMonth(); render(); scrollToToday(); };
+
+  // ---------- month replay ----------
+  // 事件序列：每天先逐格打勾(只有真的勾過的格子)，再一個「這天播完」事件；統計在「播完」時才更新
+  const RP_TOTAL_MS = 12000;   // 1x 時整個月約 12 秒
+  let rpSpeed = 1;
+  const reduceMotion = () => window.matchMedia && matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const rpShown = (hid, d) => d <= RP.doneDay || (RP.cellIdx[hid+":"+d] ?? Infinity) < RP.i;
+  function rpPopAge(hid, d){
+    const t = RP.popAt[hid+":"+d]; if(t === undefined) return null;
+    const age = performance.now() - t; return age < 300 ? Math.round(age) : null;
+  }
+  function startReplay(){
+    const t0 = today0(), days = new Date(vy,vm+1,0).getDate();
+    let last = 0; for(let d=1; d<=days; d++) if(new Date(vy,vm,d) <= t0) last = d;
+    if(!last) return;
+    stopReplay();
+    const mc = JSON.parse(JSON.stringify(mcOf(vy, vm)));   // 凍結一份，回放中有同步進來也不影響
+    const reduce = reduceMotion(), events = [], ends = {}, cellIdx = {};
+    for(let d=1; d<=last; d++){
+      if(!reduce) state.habits.forEach(h=>{
+        if(onDay(h,vy,vm,d) && (mc[h.id]||[]).includes(d)){ cellIdx[h.id+":"+d] = events.length; events.push({d, hid:h.id}); }
+      });
+      ends[d] = events.length; events.push({d, end:true});
+    }
+    const weight = events.reduce((s,e)=>s + (e.end ? 2 : 1), 0);
+    RP = {y:vy, m:vm, last, mc, events, ends, cellIdx, i:0, doneDay:0, playDay:1, view:{}, popAt:{}, playing:true, timer:null, reduce,
+          unit: Math.max(25, Math.min(700, RP_TOTAL_MS / weight))};
+    const ed = document.getElementById("editor"), te = document.getElementById("toggleEdit");
+    if(!ed.hidden) te.click();
+    te.disabled = true;
+    document.getElementById("rpbar").hidden = false;
+    document.getElementById("rpSeek").max = last;
+    rpApply();
+    rpSchedule(400);
+  }
+  function stopReplay(){
+    if(!RP) return;
+    clearTimeout(RP.timer); RP = null;
+    document.getElementById("rpbar").hidden = true;
+    document.getElementById("toggleEdit").disabled = false;
+    render(); scrollToToday();
+  }
+  function rpSchedule(ms){ clearTimeout(RP.timer); RP.timer = RP.playing ? setTimeout(rpTick, ms) : null; }
+  function rpTick(){
+    if(!RP) return;
+    if(RP.i >= RP.events.length){ stopReplay(); return; }   // 播完：回到可打勾的畫面
+    const ev = RP.events[RP.i++];
+    if(ev.hid) RP.popAt[ev.hid+":"+ev.d] = performance.now();
+    rpApply();
+    rpSchedule(RP.i >= RP.events.length ? 1200 : (ev.end ? 2 : 1) * RP.unit / rpSpeed);
+  }
+  function rpApply(){
+    let dd = 0; for(let d=1; d<=RP.last; d++) if(RP.ends[d] < RP.i) dd = d;
+    RP.doneDay = dd;
+    RP.playDay = RP.i < RP.events.length ? RP.events[RP.i].d : RP.last;
+    RP.view = {}; for(const k in RP.mc) RP.view[k] = (RP.mc[k]||[]).filter(d=>d<=dd);
+    render();
+    const seek = document.getElementById("rpSeek"); seek.value = dd;
+    document.getElementById("rpDay").textContent = `第 ${dd} / ${RP.last} 天`;
+    const pb = document.getElementById("rpPlay");
+    pb.textContent = RP.playing ? "❚❚ 暫停" : (RP.i >= RP.events.length ? "▶ 再播一次" : "▶ 繼續");
+    // 播放中的那天要留在畫面內(手機上表格會橫向捲動)
+    const sh = document.getElementById("sheet"), th = sh.querySelector("th.dnum.play-col");
+    if(th){
+      const stickW = sh.querySelector("th.stick").offsetWidth, l = th.offsetLeft, r = l + th.offsetWidth;
+      if(l < sh.scrollLeft + stickW + 8 || r > sh.scrollLeft + sh.clientWidth - 8)
+        sh.scrollLeft = Math.max(0, l - stickW - (sh.clientWidth - stickW)/2 + th.offsetWidth/2);   // 每格都會重畫，平滑捲動會被打斷，所以直接跳
+    }
+  }
+  function rpSeekTo(day){
+    RP.i = day ? RP.ends[day] + 1 : 0; RP.popAt = {};
+    rpApply(); rpSchedule(RP.unit / rpSpeed);
+  }
+  document.getElementById("replayBtn").onclick = ()=>{ if(view !== "month") setView("month"); startReplay(); };
+  document.getElementById("rpEnd").onclick = stopReplay;
+  document.getElementById("rpRestart").onclick = ()=>{ RP.playing = true; rpSeekTo(0); };
+  document.getElementById("rpPlay").onclick = ()=>{
+    if(RP.i >= RP.events.length){ RP.playing = true; rpSeekTo(0); return; }
+    RP.playing = !RP.playing; rpApply(); rpSchedule(RP.unit / rpSpeed);
+  };
+  document.getElementById("rpSeek").addEventListener("input", e=>rpSeekTo(+e.target.value));
+  document.getElementById("rpSpeed").addEventListener("click", e=>{
+    const b = e.target.closest("button[data-sp]"); if(!b) return;
+    rpSpeed = +b.dataset.sp;
+    document.querySelectorAll("#rpSpeed button").forEach(x=>x.setAttribute("aria-pressed", String(x===b)));
+  });
   function scrollToToday(){
     const sh = document.getElementById("sheet"); const t = sh.querySelector("th.today-col");
     sh.scrollLeft = t ? Math.max(0, t.offsetLeft - sh.clientWidth/2) : 0;
@@ -759,7 +886,8 @@ td.off .rest{color:var(--line-strong)}
         if(snap.exists()){
           if(!(saveTimer || saving)){
             const incoming = snap.data();
-            if(JSON.stringify(incoming) !== JSON.stringify(state)){
+            // Firestore 傳回來的欄位順序和本機不同，要排序後再比，否則每次存檔都會誤判成遠端有改動而重畫畫面
+            if(stableJSON(incoming) !== stableJSON(state)){
               state = JSON.parse(JSON.stringify(incoming));
               if(!state.checks) state.checks = {};
               if(!Array.isArray(state.habits)) state.habits = [];
