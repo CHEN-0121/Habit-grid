@@ -25,6 +25,7 @@
 - 推播一律送 data-only({webpush:{data:{title, body, tag, url}}}),由 sw.js 顯示；iOS 規定每則推播都要顯示通知
 - Firestore:users/{uid}/devices/{tokenId} = {token, platform, createdAt, lastSeen},tokenId 是 token 的 SHA-256(前 40 個 hex);users/{uid}/meta/reminderLog = {date:"YYYY-MM-DD", sent:{reminderId: ISO 時間}}
 - 定時發送:.github/workflows/reminders.yml 每 15 分鐘跑 scripts/send-reminders.mjs(firebase-admin,secret FIREBASE_SERVICE_ACCOUNT),送「預定時間在過去 20 分鐘內、今天還沒送過」的提醒，失效 token 刪掉 device。不要把金鑰或 token 寫進程式碼或 log
+- .github/workflows/keepalive.yml 每月 1 號由 github-actions[bot] commit .github/keepalive,避免排程因 60 天沒活動被停用。所以 push 前要先 git pull --rebase
 - package.json 只給 scripts 用(不要加 "type":"module",fitness-plan.js 要當 CommonJS 給 Node 讀);網站本身仍然不需要 build
 - 未登入時資料存在 localStorage
 - firebase-config.js 是前端公開設定，不要刪

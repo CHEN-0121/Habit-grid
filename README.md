@@ -114,7 +114,8 @@ GitHub Actions(每 15 分鐘)─ scripts/send-reminders.mjs ─ firebase-admin �
 
 ### 注意
 
-- 公開 repo 的 GitHub Actions 免費。repo 超過 60 天沒有任何 commit,GitHub 會自動停用排程，到 Actions 分頁重新啟用即可
+- 公開 repo 的 GitHub Actions 免費。repo 超過 60 天沒有活動，GitHub 會停用排程；`.github/workflows/keepalive.yml` 每月 1 號會自動 commit 一次 `.github/keepalive`(只有日期)避免這件事。萬一還是被停用，到 Actions 分頁重新啟用即可
+- 因為每月有一筆 bot 的 commit,在本機改完要推之前先 `git pull --rebase`
 - 手機換了 token 或解除安裝，腳本送不到時會自動刪掉那筆裝置
 - 推播只送 data-only 訊息，由 `sw.js` 顯示通知；不需要 `firebase-messaging-sw.js`
 
