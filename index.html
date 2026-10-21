@@ -112,6 +112,8 @@ thead .tot{text-align:left;padding-left:10px}
 .today-head{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:12px 14px;background:var(--band)}
 .today-head strong{font-size:16px}
 .today-head .count{font-family:var(--f-num);font-size:13px;color:var(--muted)}
+.today-mid{flex:1;min-width:0;text-align:center;display:flex;flex-direction:column;align-items:center;gap:2px}
+.today-mid .meter{width:min(220px,100%);margin-top:4px;background:var(--sheet)}
 .tlist{list-style:none;margin:0;padding:0}
 .titem{border-top:1px solid var(--line)}
 .titem button{width:100%;display:flex;align-items:center;gap:14px;padding:14px;border:0;background:transparent;text-align:left;min-height:60px}
@@ -250,7 +252,7 @@ td.off .rest{color:var(--line-strong)}
   <section class="today" id="todayView" hidden aria-label="單日打卡">
     <div class="today-head">
       <button class="btn" id="dPrev" aria-label="前一天">‹</button>
-      <div style="text-align:center"><strong id="dLabel">—</strong><div class="count" id="dCount"></div></div>
+      <div class="today-mid"><strong id="dLabel">—</strong><div class="count" id="dCount"></div><div class="meter" role="progressbar" aria-label="當日完成率" aria-valuemin="0" aria-valuemax="100" id="dMeter"><i></i></div></div>
       <button class="btn" id="dNext" aria-label="後一天">›</button>
     </div>
     <ul class="tlist" id="tlist"></ul>
@@ -683,7 +685,10 @@ td.off .rest{color:var(--line-strong)}
       return `<li class="titem"><button data-h="${h.id}" aria-pressed="${on}"><span class="box"></span><span class="tn">${esc(h.name)}</span><span class="tm">本月 ${doneCount(h,y,m,arr)}/${goalOf(h,y,m)}</span></button></li>`;
     }).join("") + (rest.length ? `<li class="titem trest">今天不用做：${rest.map(h=>esc(h.name)).join("、")}</li>` : "")
       : `<li class="titem"><div class="empty">還沒有任何習慣。按「編輯習慣」新增第一個。</div></li>`;
-    document.getElementById("dCount").textContent = `完成 ${n} / ${todo.length}`;
+    const rate = todo.length ? Math.round(n/todo.length*100) : 0;
+    document.getElementById("dCount").textContent = todo.length ? `完成 ${n} / ${todo.length} · ${rate}%` : "今天沒有要做的事";
+    const dm = document.getElementById("dMeter");
+    dm.setAttribute("aria-valuenow", rate); dm.firstElementChild.style.width = rate + "%";
   }
   document.getElementById("tlist").addEventListener("click", e=>{
     const b = e.target.closest("button[data-h]"); if(!b) return;
