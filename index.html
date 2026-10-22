@@ -258,6 +258,9 @@ td.off .rest{color:var(--line-strong)}
 .aimsg{margin:0;font-size:12px;color:var(--muted)}
 .aimsg:empty{display:none}
 .aimsg.warn{color:var(--danger)}
+.aians{border-left:3px solid var(--accent);background:var(--sheet);border-radius:0 6px 6px 0;padding:8px 10px}
+.aians p{margin:0;font-size:14px;line-height:1.7;white-space:pre-line}
+.aians .aidisc{margin-top:4px;font-size:11px;color:var(--muted)}
 .aiprev{display:flex;flex-direction:column;gap:8px}
 .aiitem{display:flex;flex-direction:column;gap:6px;padding:8px 0;border-top:1px solid var(--line)}
 .aihead{display:flex;gap:6px;align-items:flex-end}
@@ -383,12 +386,13 @@ thead .frow .ft-run{color:var(--accent);font-weight:700}
     <section class="diet" id="fDiet" aria-label="今日飲食">
       <div id="dietView" class="fpart"></div>
       <div class="aibox" id="aiBox" hidden>
-        <label for="aiText" class="ailbl">一句話記錄(AI 估算)</label>
+        <label for="aiText" class="ailbl">一句話記錄或發問(AI)</label>
         <div class="airow">
-          <input id="aiText" maxlength="200" placeholder="例如：自助餐 一碗飯 滷雞腿 滷蛋 三樣青菜" enterkeyhint="send" autocomplete="off">
-          <button class="btn primary" id="aiGo" type="button">AI 估算</button>
+          <input id="aiText" maxlength="200" placeholder="吃了什麼，或問問題(例如：晚餐在 7-11 怎麼搭)" enterkeyhint="send" autocomplete="off">
+          <button class="btn primary" id="aiGo" type="button">送出</button>
         </div>
         <p class="aimsg" id="aiMsg" role="status"></p>
+        <div id="aiAnswer" aria-live="polite"></div>
         <div id="aiPreview"></div>
       </div>
       <form class="dform" id="dietForm" hidden autocomplete="off">
@@ -995,7 +999,7 @@ thead .frow .ft-run{color:var(--accent);font-weight:700}
   function renderDiet(date){
     if(dietDateKey !== ymd(date)){   // 換天時關掉表單和 AI 預覽，免得加到別天
       closeDietForm(); dietDateKey = ymd(date);
-      if(aiDraft){ aiDraft = null; renderAiPreview(); setAiMsg(""); }
+      if(aiDraft || aiAnswer){ aiDraft = null; aiAnswer = null; renderAiPreview(); renderAiAnswer(); setAiMsg(""); }
     }
     updateAiBox();
     const D = FP.dietDay(state.fitness, dayLog(date, false), date), F = state.fitness;
@@ -1095,16 +1099,47 @@ thead .frow .ft-run{color:var(--accent);font-weight:700}
   // 每天最多 AI_DAILY_LIMIT 次，次數記在 users/{uid}/meta/aiUsage = {date:"YYYY-MM-DD"(台灣), count}。結果先預覽，按「加入」才寫入。
   const AI_DAILY_LIMIT = 30;
   const AI_INSTRUCTION = [
-    "你是營養估算助手。使用者會用一句話描述一餐，請拆成個別食物，估算每一項的熱量(kcal)、蛋白質、脂肪、碳水(公克)。",
-    "規則：",
-    "1. 這是台灣的外食，用台灣常見的做法和份量估算；份量沒講清楚時，用台灣常見份量(例如自助餐一碗白飯約 200 g 熟飯)。",
-    "2. 數字取整數或一位小數。",
-    "3. 不確定時 confidence 填「低」;份量和做法都很明確才填「高」,其餘填「中」。",
-    "4. note 用一句繁體中文寫估算依據，例如「以帶皮滷雞腿約 150 g 估算」。",
-    "5. 如果某項食物和「已知食物」清單裡的名稱相同，直接使用清單裡的數字，不要重新估，confidence 填「高」,note 寫「使用常吃清單的數字」。",
-    "6. name 用繁體中文，只列出描述裡提到的食物；描述裡沒有食物時回傳空的 items。"
+    "你是飲食記錄與營養建議助手。先判斷使用者這句話的 intent:",
+    "- \"log\":描述吃了什麼(要記錄)。填 items,不填 answer。",
+    "- \"question\":在發問(例如還可以吃多少、晚餐怎麼搭)。填 answer,不填 items。",
+    "- \"unclear\":看不懂或跟飲食無關。items 和 answer 都不填。",
+    "",
+    "記錄食物(log)的規則：",
+    "1. 拆成個別食物，估算每一項的熱量(kcal)、蛋白質、脂肪、碳水(公克)。",
+    "2. 這是台灣的外食，用台灣常見的做法和份量估算；份量沒講清楚時，用台灣常見份量(例如自助餐一碗白飯約 200 g 熟飯)。",
+    "3. 數字取整數或一位小數。",
+    "4. 不確定時 confidence 填「低」;份量和做法都很明確才填「高」,其餘填「中」。",
+    "5. note 用一句繁體中文寫估算依據，例如「以帶皮滷雞腿約 150 g 估算」。",
+    "6. 如果某項食物和「已知食物」清單裡的名稱相同，直接使用清單裡的數字，不要重新估，confidence 填「高」,note 寫「使用常吃清單的數字」。",
+    "7. name 用繁體中文，只列出描述裡提到的食物。",
+    "",
+    "回答問題(question)的規則：",
+    "1. 用繁體中文，150 字以內，直接給建議，不要客套、不要開場白。",
+    "2. 跟熱量、蛋白質有關的數字，一律以「今天的狀況」裡程式算好的「還差」為準，不要自己重算目標或合計。",
+    "3. 建議具體食物搭配時最多列 3 組，每組標示大約的熱量和蛋白質，搭配要符合「晚餐三件事」。",
+    "4. 只能給建議，不能說你已經修改了目標、課表或紀錄。"
   ].join("\n");
-  let aiM = null, aiModel = null, aiBusy = false, aiDraft = null;
+  const AI_UNCLEAR = "可以輸入吃了什麼，或直接問問題，例如「晚餐在自助餐怎麼夾」。";
+  let aiM = null, aiModel = null, aiBusy = false, aiDraft = null, aiAnswer = null;
+  // 發問時給 AI 的今天狀況：日期、課表、目標、已吃的東西、程式算好的「還差」、晚餐規則。不含體重、InBody、腰圍等身體數據
+  function aiContext(date){
+    const F = state.fitness, f = fitnessDay(date), D = FP.dietDay(F, dayLog(date, false), date);
+    return {
+      日期: `${ymd(date)}(星期${DOW[date.getDay()]})`,
+      健身計畫: f ? FP.phaseLabel(f) : "沒有計畫",
+      今天課表: f ? `${f.type.label || ""}:${f.s.title}` : "—",
+      今天目標: f ? {熱量kcal: f.type.kcal, 蛋白質g: f.type.protein, 脂肪g: f.type.fat, 碳水g: f.type.carbs} : null,
+      已經吃了: D.items.filter(it=>!it.off).map(it=>({名稱: it.name, 熱量kcal: it.kcal, 蛋白質g: it.protein})),
+      合計: {熱量kcal: D.totals.kcal, 蛋白質g: D.totals.protein, 脂肪g: D.totals.fat, 碳水g: D.totals.carbs},
+      還差: D.left ? {熱量kcal: D.left.kcal, 蛋白質g: D.left.protein} : null,
+      晚餐三件事: (F.tips && F.tips.dinner) || []
+    };
+  }
+  function renderAiAnswer(){
+    const el = document.getElementById("aiAnswer");
+    el.innerHTML = aiAnswer && aiAnswer.date === ymd(sd)
+      ? `<div class="aians"><p>${esc(aiAnswer.text)}</p><p class="aidisc">AI 建議僅供參考</p></div>` : "";
+  }
   const normName = s => String(s || "").replace(/[\s()()、,，.。·]/g, "").toLowerCase();
   const knownFoods = () => [...((state.fitness.presets || [])[0] || {items:[]}).items || [], ...(state.fitness.foods || [])]
     .map(f=>({name:f.name, kcal:f.kcal, protein:f.protein, fat:f.fat ?? 0, carbs:f.carbs ?? 0}));
@@ -1112,10 +1147,14 @@ thead .frow .ft-run{color:var(--accent);font-weight:700}
     if(aiModel) return aiModel;
     aiM = await import(`https://www.gstatic.com/firebasejs/${FB_VER}/firebase-ai.js`);
     const S = aiM.Schema;
-    const schema = S.object({properties:{items: S.array({items: S.object({properties:{
-      name: S.string(), kcal: S.number(), protein: S.number(), fat: S.number(), carb: S.number(),
-      confidence: S.enumString({enum:["高","中","低"]}), note: S.string()
-    }})})}});
+    const schema = S.object({properties:{
+      intent: S.enumString({enum:["log","question","unclear"]}),
+      items: S.array({items: S.object({properties:{
+        name: S.string(), kcal: S.number(), protein: S.number(), fat: S.number(), carb: S.number(),
+        confidence: S.enumString({enum:["高","中","低"]}), note: S.string()
+      }})}),
+      answer: S.string()
+    }, optionalProperties:["items","answer"]});
     aiModel = aiM.getGenerativeModel(aiM.getAI(fb.app, {backend: new aiM.GoogleAIBackend()}), {
       model: window.HABIT_AI_MODEL,
       systemInstruction: AI_INSTRUCTION,
@@ -1152,26 +1191,36 @@ thead .frow .ft-run{color:var(--accent);font-weight:700}
     box.hidden = !window.HABIT_AI_MODEL;
     document.getElementById("aiText").disabled = !on;
     const go = document.getElementById("aiGo");
-    go.disabled = !on || aiBusy; go.textContent = aiBusy ? "估算中…" : "AI 估算";
-    if(!on && !aiBusy) setAiMsg("登入後才能用 AI 估算，手動「＋新增」照常可以用。");
+    go.disabled = !on || aiBusy; go.textContent = aiBusy ? "處理中…" : "送出";
+    if(!on && !aiBusy) setAiMsg("登入後才能用 AI,手動「＋新增」照常可以用。");
     else if(on && document.getElementById("aiMsg").textContent.startsWith("登入後")) setAiMsg("");
   }
   async function runAi(){
     if(aiBusy) return;   // 送出後鎖住，避免連點
     const text = document.getElementById("aiText").value.trim();
-    if(!text){ setAiMsg("先輸入吃了什麼，例如「自助餐 一碗飯 滷雞腿 滷蛋 三樣青菜」。", true); return; }
+    if(!text){ setAiMsg(AI_UNCLEAR, true); return; }
     const uid = currentUid(); if(!uid){ updateAiBox(); return; }
     if(!navigator.onLine){ setAiMsg("目前離線，AI 估算要連網路。可以先手動輸入。", true); return; }
     const date = ymd(sd);
-    aiBusy = true; updateAiBox(); setAiMsg("AI 估算中…");
+    aiDraft = null; aiAnswer = null; renderAiPreview(); renderAiAnswer();
+    aiBusy = true; updateAiBox(); setAiMsg("AI 處理中…");
     try{
       let left;
       try{ left = await takeAiQuota(uid); }catch(e){ e.stage = "quota"; throw e; }
       if(left < 0){ setAiMsg("今天的 AI 次數已用完，請手動輸入。", true); return; }
       const known = knownFoods();
       const model = await getAiModel();
-      const res = await model.generateContent(`描述：${text}\n\n已知食物(名稱相同時直接用這些數字):${JSON.stringify(known)}`);
+      const res = await model.generateContent(
+        `使用者輸入：${text}\n\n今天的狀況(程式算好的數字，以這些為準):${JSON.stringify(aiContext(sd))}\n\n` +
+        `已知食物(記錄時名稱相同就直接用這些數字):${JSON.stringify(known)}`);
       const data = JSON.parse(res.response.text());
+      if(data.intent === "question" && data.answer){   // 發問：只顯示回答，不寫入任何紀錄
+        aiAnswer = {date, text: String(data.answer).trim()};
+        renderAiAnswer();
+        setAiMsg(`今天還可以用 ${left} 次。`);
+        return;
+      }
+      if(data.intent !== "log"){ setAiMsg(AI_UNCLEAR, true); return; }
       const byName = new Map(known.map(f=>[normName(f.name), f]));
       const items = (Array.isArray(data.items) ? data.items : []).filter(it=>it && it.name).map(it=>{
         const k = byName.get(normName(it.name));   // 和常吃清單同名：一定用清單的數字
@@ -1179,7 +1228,7 @@ thead .frow .ft-run{color:var(--accent);font-weight:700}
         const n = v => Math.max(0, Math.round(Number(v || 0) * 10) / 10);
         return {name: String(it.name), kcal: n(it.kcal), protein: n(it.protein), fat: n(it.fat), carbs: n(it.carb), confidence: ["高","中","低"].includes(it.confidence) ? it.confidence : "低", note: String(it.note || "")};
       });
-      if(!items.length){ setAiMsg("AI 看不出有哪些食物，換個說法再試試。", true); return; }
+      if(!items.length){ setAiMsg(AI_UNCLEAR, true); return; }
       aiDraft = {date, items};
       renderAiPreview();
       setAiMsg(`估算完成，確認或修改後按「加入」。今天還可以用 ${left} 次。`);
