@@ -10,7 +10,7 @@
 |---|---|
 | `index.html` | App 本體 |
 | `fitness-plan.js` | 30 天健身衝刺的課表與通知內容(App 和推播腳本共用) |
-| `firebase-config.js` | 填入你的 Firebase 設定(第 4 步)和推播的 VAPID 公開金鑰(第 7 步) |
+| `firebase-config.js` | 填入你的 Firebase 設定(第 4 步)、推播的 VAPID 公開金鑰(第 7 步)、App Check 網站金鑰和 AI 模型名稱(第 8 步) |
 | `firestore.rules` | 資料庫權限：每個人只能讀寫自己的資料 |
 | `firebase.json` | 用 Firebase Hosting 上線時的設定 |
 | `manifest.webmanifest`、`sw.js`、`icon-*.png` | 讓手機可以安裝到主畫面、離線也能打開；`sw.js` 也負責顯示推播 |
@@ -118,6 +118,45 @@ GitHub Actions(每 15 分鐘)─ scripts/send-reminders.mjs ─ firebase-admin �
 - 因為每月有一筆 bot 的 commit,在本機改完要推之前先 `git pull --rebase`
 - 手機換了 token 或解除安裝，腳本送不到時會自動刪掉那筆裝置
 - 推播只送 data-only 訊息，由 `sw.js` 顯示通知；不需要 `firebase-messaging-sw.js`
+
+## 8. 一句話記錄(AI 估算熱量，選用)
+
+在「今日飲食」輸入一句話(例如「自助餐 一碗飯 滷雞腿 滷蛋 三樣青菜」),AI 會估出每一項的熱量、蛋白質、脂肪、碳水和信心程度，確認或修改後按「加入」才會記錄。
+
+### 架構
+
+```
+App ─ App Check(reCAPTCHA Enterprise)─→ Firebase AI Logic ─→ Gemini Developer API(免費方案)
+ │                                          ↑ 只送「那句話」和常吃清單/固定早午餐的營養數字
+ └─ users/{uid}/meta/aiUsage 記每天用了幾次(上限 30 次)
+```
+
+- 全部免費：用 **Gemini Developer API**(不是 Vertex AI),Spark 免費方案就能用，不需要 Blaze
+- 模型名稱在 `firebase-config.js` 的 `HABIT_AI_MODEL`(目前 `gemini-3.5-flash`)。模型被停用時，到 https://firebase.google.com/docs/ai-logic/models 找新的 Flash 型號換掉即可
+- 和常吃清單或固定早午餐同名的食物，直接用清單裡的數字
+- 只有登入後才能用；額度用完、離線或出錯時會說明原因，手動「＋新增」照常可用
+
+### 設定步驟
+
+1. **啟用 Firebase AI Logic**:Firebase 左側選單「AI Logic」→「開始使用」→ 選 **Gemini Developer API**(不要選 Vertex AI)
+2. **設定 App Check(reCAPTCHA Enterprise)**:
+   1. Google Cloud Console 的 reCAPTCHA 頁面，確認網站金鑰的「網域」有 `chen-0121.github.io`(或你的網址)
+   2. Firebase「建構 → App Check → 應用程式」→ 選你的網頁應用程式 → **reCAPTCHA Enterprise** → 貼上網站金鑰(和 `firebase-config.js` 的 `HABIT_RECAPTCHA_ENTERPRISE_KEY` 同一把)→ 儲存
+3. **登記 debug token(本機開發用)**:在 `localhost` 或 `127.0.0.1` 打開 App 時，App Check 會改用 debug token
+   1. 用本機網址打開 App(例如 `python -m http.server 8000` 後開 http://localhost:8000)
+   2. 打開瀏覽器的開發者工具 → Console,找到「`App Check debug token: xxxxxxxx-xxxx-…`」這行，複製那串 token
+   3. Firebase「App Check → 應用程式」→ 你的網頁應用程式右邊的「⋮」→「管理偵錯權杖」→「新增偵錯權杖」→ 貼上、取個名字(例如「我的電腦」)→ 儲存
+   4. 同一個瀏覽器之後都會用同一個 token。**debug token 等於通行證，不要貼到網路上或放進 repo**;不用了就在同一個畫面刪掉
+4. **開啟強制驗證(enforce)**:Firebase「App Check → API」頁面
+   - **Firebase AI Logic**:確認網站正常後開啟強制驗證。**官方規定 2026-11-02 起 AI Logic 一定要開**
+   - Cloud Firestore、Authentication:建議先觀察「App Check → 指標」幾天，確認大部分請求都是「已驗證」,再決定要不要開；沒開之前不會擋任何請求
+5. **測試**:登入後在「今日飲食」輸入一句話按「AI 估算」
+
+### 注意
+
+- 免費方案有每分鐘 / 每天的請求上限，用完會顯示「AI 的免費額度暫時用完了(429)」,過一陣子再試即可
+- 每天 30 次是 App 自己的上限(台灣時間換日重算),記在 `users/{uid}/meta/aiUsage`
+- AI 估的數字是估計值，清單上會標「AI 估計」,信心低的另外標「信心低」
 
 ---
 

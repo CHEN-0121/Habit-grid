@@ -22,6 +22,14 @@
   - brunchSkipped:那天整份固定早午餐沒吃；brunchOff:只取消其中幾項。都沒寫就代表照常吃
   - 本機快取在 localStorage「habit-grid-v1-logs」= {owner:uid|null, months:{"YYYY-MM":{days}}}。未登入只存本機；登入後第一次拿到伺服器資料時，把雲端沒有的天數補上去(雲端已有的那天以雲端為準；別的帳號留下的不上傳)
   - 匯出備份多一個 logs:{"YYYY-MM":{days}},匯入時拿出來寫回子集合，不能放進主文件
+  - meals[] 由 AI 估算加入的會多 source:"AI 估計"、confidence:"高"|"中"|"低"、note(估算依據)
+- Firebase JS SDK 統一用 FB_VER(目前 12.19.0),從 gstatic 動態 import;所有模組必須同一版
+- App Check:initCloud() 在 initializeApp 之後、使用其他服務之前 initializeAppCheck(ReCaptchaEnterpriseProvider,金鑰 HABIT_RECAPTCHA_ENTERPRISE_KEY)。localhost / 127.0.0.1 自動開 debug token
+- 一句話記錄(AI):Firebase AI Logic 的 Gemini Developer API(firebase-ai.js、GoogleAIBackend,不用 Vertex AI / Blaze)。模型名稱在 firebase-config.js 的 HABIT_AI_MODEL
+  - responseSchema:{items:[{name, kcal, protein, fat, carb, confidence:"高"|"中"|"低", note}]};和常吃清單 / 固定早午餐同名的項目，前端一律換回清單數字
+  - 只送出輸入的那句話和已知食物的營養數字，不送其他個人資料
+  - 每天最多 30 次(AI_DAILY_LIMIT),記在 users/{uid}/meta/aiUsage = {date:"YYYY-MM-DD"(台灣), count, updatedAt},呼叫前用交易扣次數
+  - 結果先顯示可編輯的預覽，按「加入」才寫進 logs;只有登入後能用，失敗時手動輸入照常可用
 - 網址加 ?today=YYYY-MM-DD 會把那天當作今天(測試用),所有「今天」都要用 today0() 取得
 - fitness-plan.js:健身計畫的共用邏輯(DEFAULT_FITNESS、ensureFitness、fitnessDay、reminderMessage、taipeiParts),瀏覽器用 window.FitnessPlan,Node 用 import。App 和推播腳本共用，不要在 index.html 另寫一份
 

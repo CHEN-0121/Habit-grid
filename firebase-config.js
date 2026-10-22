@@ -11,3 +11,11 @@ window.HABIT_FIREBASE_CONFIG = {
 
 // 推播用的 VAPID 公開金鑰(Firebase 專案設定 → Cloud Messaging → 網路推播憑證)。這是公開金鑰，放在前端沒問題。
 window.HABIT_FCM_VAPID_KEY = "BLfS_eqE-zrEY01vfVWAibO6XmsO-NGcn3HZHnv9t_n-rww-YVzkSgclsPvXuefflhiyBojNb3xDbOPHFvOY7DI";
+
+// App Check(保護 Firebase AI Logic,避免別人盜用額度)用的 reCAPTCHA Enterprise 網站金鑰。網站金鑰是公開的，放在前端沒問題。
+// 在 localhost / 127.0.0.1 開發時會改用 debug token(設定方式見 README)。
+window.HABIT_RECAPTCHA_ENTERPRISE_KEY = "6LdTxPotAAAAAIg5Wzsqmjjx6s2Qzwmu0rGBMtkb";
+
+// 「一句話記錄」用的 Gemini 模型(Firebase AI Logic + Gemini Developer API,免費方案可用的 Flash 系列)。
+// 模型停用時改這裡就好，可用的名稱見 https://firebase.google.com/docs/ai-logic/models
+window.HABIT_AI_MODEL = "gemini-3.5-flash";

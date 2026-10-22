@@ -249,6 +249,28 @@ td.off .rest{color:var(--line-strong)}
 #dietFavs:empty{display:none}
 .fav{border:1px solid var(--line-strong);background:var(--sheet);border-radius:999px;padding:4px 10px;font-size:12px;min-height:30px}
 .fav:hover{border-color:var(--accent)}
+.aibox{display:flex;flex-direction:column;gap:6px;border-top:1px solid var(--line);padding-top:10px}
+.ailbl{font-size:13px;font-weight:700}
+.airow{display:flex;gap:6px}
+.airow input{flex:1;min-width:0;font:inherit;color:var(--ink);background:var(--sheet);border:1px solid var(--line-strong);border-radius:6px;padding:7px 9px}
+.airow .btn{white-space:nowrap}
+.airow .btn:disabled{opacity:.6;cursor:wait}
+.aimsg{margin:0;font-size:12px;color:var(--muted)}
+.aimsg:empty{display:none}
+.aimsg.warn{color:var(--danger)}
+.aiprev{display:flex;flex-direction:column;gap:8px}
+.aiitem{display:flex;flex-direction:column;gap:6px;padding:8px 0;border-top:1px solid var(--line)}
+.aihead{display:flex;gap:6px;align-items:flex-end}
+.aihead .ainame{flex:1}
+.aihead .tag{margin-bottom:8px}
+.ainums{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px}
+@media (max-width:420px){.ainums{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.aiitem label{display:flex;flex-direction:column;gap:2px;font-size:11px;color:var(--muted);min-width:0}
+.aiitem input{font:inherit;font-size:13px;color:var(--ink);background:var(--sheet);border:1px solid var(--line-strong);border-radius:6px;padding:5px 7px;min-width:0;width:100%}
+.ainote{margin:0;font-size:12px;color:var(--muted)}
+.aiacts{display:flex;gap:8px}
+.tag.ai{background:var(--band);color:var(--ink)}
+.tag.low{background:var(--today);color:var(--ink)}
 .presets{display:flex;flex-direction:column;gap:10px;border-top:1px solid var(--line);padding-top:12px}
 .presets h3{margin:0;font-size:15px}
 .prow{display:grid;grid-template-columns:repeat(4,minmax(0,1fr)) minmax(0,1.6fr) auto;gap:6px;align-items:end;padding-bottom:10px;border-bottom:1px dashed var(--line)}
@@ -360,6 +382,15 @@ thead .frow .ft-run{color:var(--accent);font-weight:700}
     <div id="fTop" class="fpart"></div>
     <section class="diet" id="fDiet" aria-label="今日飲食">
       <div id="dietView" class="fpart"></div>
+      <div class="aibox" id="aiBox" hidden>
+        <label for="aiText" class="ailbl">一句話記錄(AI 估算)</label>
+        <div class="airow">
+          <input id="aiText" maxlength="200" placeholder="例如：自助餐 一碗飯 滷雞腿 滷蛋 三樣青菜" enterkeyhint="send" autocomplete="off">
+          <button class="btn primary" id="aiGo" type="button">AI 估算</button>
+        </div>
+        <p class="aimsg" id="aiMsg" role="status"></p>
+        <div id="aiPreview"></div>
+      </div>
       <form class="dform" id="dietForm" hidden autocomplete="off">
         <input type="hidden" id="dfId">
         <label class="wide"><span>名稱</span><input id="dfName" maxlength="40" required></label>
@@ -962,7 +993,11 @@ thead .frow .ft-run{color:var(--accent);font-weight:700}
   const kp = it => `${fmtN(it.kcal)} kcal · ${fmtN(it.protein)} g`;
   let dietDateKey = null;
   function renderDiet(date){
-    if(dietDateKey !== ymd(date)){ closeDietForm(); dietDateKey = ymd(date); }   // 換天時關掉表單，免得加到別天
+    if(dietDateKey !== ymd(date)){   // 換天時關掉表單和 AI 預覽，免得加到別天
+      closeDietForm(); dietDateKey = ymd(date);
+      if(aiDraft){ aiDraft = null; renderAiPreview(); setAiMsg(""); }
+    }
+    updateAiBox();
     const D = FP.dietDay(state.fitness, dayLog(date, false), date), F = state.fitness;
     const bar = (label, eaten, target, unit) => {
       const p = target ? Math.min(100, eaten / target * 100) : 0;
@@ -985,7 +1020,7 @@ thead .frow .ft-run{color:var(--accent);font-weight:700}
     }
     const meals = D.items.filter(it=>!it.auto);
     h += `<div class="dgroup"><div class="dgh"><b>其他食物</b></div>` + (meals.length ? `<ul class="dlist">` + meals.map(m=>
-      `<li class="drow"><span class="dn">${esc(m.name)}</span><span class="dk">${kp(m)}</span><span class="acts"><button class="mini" type="button" data-act="edit" data-id="${esc(m.id)}">修改</button><button class="mini del" type="button" data-act="del" data-id="${esc(m.id)}" aria-label="刪除 ${esc(m.name)}">✕</button></span></li>`).join("") + `</ul>`
+      `<li class="drow"><span class="dn">${esc(m.name)}${m.source ? ` <span class="tag ai"${m.note ? ` title="${esc(m.note)}"` : ""}>${esc(m.source)}</span>` : ""}${m.confidence === "低" ? ` <span class="tag low">信心低</span>` : ""}</span><span class="dk">${kp(m)}</span><span class="acts"><button class="mini" type="button" data-act="edit" data-id="${esc(m.id)}">修改</button><button class="mini del" type="button" data-act="del" data-id="${esc(m.id)}" aria-label="刪除 ${esc(m.name)}">✕</button></span></li>`).join("") + `</ul>`
       : `<p class="dnote">還沒有其他紀錄。按「＋新增」或點下面的常吃食物。</p>`) + `</div>`;
     document.getElementById("dietView").innerHTML = h;
     const foods = F.foods || [];
@@ -1023,8 +1058,9 @@ thead .frow .ft-run{color:var(--accent);font-weight:700}
     if(fat != null && isFinite(fat)) m.fat = fat;
     if(carbs != null && isFinite(carbs)) m.carbs = carbs;
     const d = dayLog(sd, true), i = d.meals.findIndex(x=>x.id === m.id);
+    if(i >= 0) ["source","confidence","note"].forEach(k=>{ if(d.meals[i][k] != null) m[k] = d.meals[i][k]; });   // 修改 AI 估計的那筆時保留標記
     if(i >= 0) d.meals[i] = m; else d.meals.push(m);
-    saveLog(sd); rememberFood(m); closeDietForm(); renderDiet(sd);
+    saveLog(sd); if(!m.source) rememberFood(m); closeDietForm(); renderDiet(sd);
   });
   document.getElementById("dfCancel").addEventListener("click", closeDietForm);
   document.getElementById("fDiet").addEventListener("click", e=>{
@@ -1052,6 +1088,149 @@ thead .frow .ft-run{color:var(--accent);font-weight:700}
       d.meals = d.meals.filter(x=>x.id !== b.dataset.id);
     } else return;
     saveLog(sd); renderDiet(sd);
+  });
+
+  // ---------- 一句話記錄(AI 估算) ----------
+  // Firebase AI Logic + Gemini Developer API(免費方案)。只送出輸入的那句話和已知食物(常吃清單 + 固定早午餐)的營養數字。
+  // 每天最多 AI_DAILY_LIMIT 次，次數記在 users/{uid}/meta/aiUsage = {date:"YYYY-MM-DD"(台灣), count}。結果先預覽，按「加入」才寫入。
+  const AI_DAILY_LIMIT = 30;
+  const AI_INSTRUCTION = [
+    "你是營養估算助手。使用者會用一句話描述一餐，請拆成個別食物，估算每一項的熱量(kcal)、蛋白質、脂肪、碳水(公克)。",
+    "規則：",
+    "1. 這是台灣的外食，用台灣常見的做法和份量估算；份量沒講清楚時，用台灣常見份量(例如自助餐一碗白飯約 200 g 熟飯)。",
+    "2. 數字取整數或一位小數。",
+    "3. 不確定時 confidence 填「低」;份量和做法都很明確才填「高」,其餘填「中」。",
+    "4. note 用一句繁體中文寫估算依據，例如「以帶皮滷雞腿約 150 g 估算」。",
+    "5. 如果某項食物和「已知食物」清單裡的名稱相同，直接使用清單裡的數字，不要重新估，confidence 填「高」,note 寫「使用常吃清單的數字」。",
+    "6. name 用繁體中文，只列出描述裡提到的食物；描述裡沒有食物時回傳空的 items。"
+  ].join("\n");
+  let aiM = null, aiModel = null, aiBusy = false, aiDraft = null;
+  const normName = s => String(s || "").replace(/[\s()()、,，.。·]/g, "").toLowerCase();
+  const knownFoods = () => [...((state.fitness.presets || [])[0] || {items:[]}).items || [], ...(state.fitness.foods || [])]
+    .map(f=>({name:f.name, kcal:f.kcal, protein:f.protein, fat:f.fat ?? 0, carbs:f.carbs ?? 0}));
+  async function getAiModel(){
+    if(aiModel) return aiModel;
+    aiM = await import(`https://www.gstatic.com/firebasejs/${FB_VER}/firebase-ai.js`);
+    const S = aiM.Schema;
+    const schema = S.object({properties:{items: S.array({items: S.object({properties:{
+      name: S.string(), kcal: S.number(), protein: S.number(), fat: S.number(), carb: S.number(),
+      confidence: S.enumString({enum:["高","中","低"]}), note: S.string()
+    }})})}});
+    aiModel = aiM.getGenerativeModel(aiM.getAI(fb.app, {backend: new aiM.GoogleAIBackend()}), {
+      model: window.HABIT_AI_MODEL,
+      systemInstruction: AI_INSTRUCTION,
+      generationConfig: {responseMimeType: "application/json", responseSchema: schema, temperature: 0.2}
+    });
+    return aiModel;
+  }
+  // 先扣一次額度(交易，避免兩台裝置同時用時算錯)。回傳今天剩下的次數，用完回傳 -1
+  async function takeAiQuota(uid){
+    const F = fb.fsM, ref = F.doc(fb.db, "users", uid, "meta", "aiUsage"), day = FP.taipeiParts(new Date()).dateKey;
+    return F.runTransaction(fb.db, async tx=>{
+      const s = await tx.get(ref), d = s.exists() ? s.data() : {};
+      const count = d.date === day ? (d.count || 0) : 0;
+      if(count >= AI_DAILY_LIMIT) return -1;
+      tx.set(ref, {date: day, count: count + 1, updatedAt: F.serverTimestamp()});
+      return AI_DAILY_LIMIT - count - 1;
+    });
+  }
+  function aiErrText(e){
+    const s = `${(e && e.code) || ""} ${(e && e.message) || e}`;
+    if(e && e.stage === "quota") return /permission-denied/.test(s) ? "沒有權限記錄 AI 使用次數(Firestore 規則可能還沒發布)。可以先手動輸入。"
+      : "連不上資料庫，可能離線了。可以先手動輸入。";
+    if(!navigator.onLine || /network|offline|Failed to fetch/i.test(s)) return "目前離線或網路不穩，請稍後再試，或先手動輸入。";
+    if(/429|quota|RESOURCE_EXHAUSTED|rate.?limit/i.test(s)) return "AI 的免費額度暫時用完了(429),請過一陣子再試，或先手動輸入。";
+    if(/app.?check|appCheck|403|PERMISSION_DENIED|unauthenticated/i.test(s)) return "App Check 驗證沒通過或 AI Logic 還沒啟用，AI 暫時不能用(見 README)。可以先手動輸入。";
+    if(/404|not.?found|model/i.test(s)) return `找不到模型「${window.HABIT_AI_MODEL}」,可能已經停用，要到 firebase-config.js 換模型。可以先手動輸入。`;
+    if(/JSON|parse/i.test(s)) return "AI 回傳的格式有問題，請換個說法再試，或手動輸入。";
+    return "AI 估算失敗，請稍後再試，或先手動輸入。";
+  }
+  function setAiMsg(text, warn){ const m = document.getElementById("aiMsg"); m.textContent = text || ""; m.classList.toggle("warn", !!warn); }
+  // 登入狀態、忙碌狀態變了就更新輸入框(不動使用者打到一半的字)
+  function updateAiBox(){
+    const box = document.getElementById("aiBox"), on = mode === "cloud";
+    box.hidden = !window.HABIT_AI_MODEL;
+    document.getElementById("aiText").disabled = !on;
+    const go = document.getElementById("aiGo");
+    go.disabled = !on || aiBusy; go.textContent = aiBusy ? "估算中…" : "AI 估算";
+    if(!on && !aiBusy) setAiMsg("登入後才能用 AI 估算，手動「＋新增」照常可以用。");
+    else if(on && document.getElementById("aiMsg").textContent.startsWith("登入後")) setAiMsg("");
+  }
+  async function runAi(){
+    if(aiBusy) return;   // 送出後鎖住，避免連點
+    const text = document.getElementById("aiText").value.trim();
+    if(!text){ setAiMsg("先輸入吃了什麼，例如「自助餐 一碗飯 滷雞腿 滷蛋 三樣青菜」。", true); return; }
+    const uid = currentUid(); if(!uid){ updateAiBox(); return; }
+    if(!navigator.onLine){ setAiMsg("目前離線，AI 估算要連網路。可以先手動輸入。", true); return; }
+    const date = ymd(sd);
+    aiBusy = true; updateAiBox(); setAiMsg("AI 估算中…");
+    try{
+      let left;
+      try{ left = await takeAiQuota(uid); }catch(e){ e.stage = "quota"; throw e; }
+      if(left < 0){ setAiMsg("今天的 AI 次數已用完，請手動輸入。", true); return; }
+      const known = knownFoods();
+      const model = await getAiModel();
+      const res = await model.generateContent(`描述：${text}\n\n已知食物(名稱相同時直接用這些數字):${JSON.stringify(known)}`);
+      const data = JSON.parse(res.response.text());
+      const byName = new Map(known.map(f=>[normName(f.name), f]));
+      const items = (Array.isArray(data.items) ? data.items : []).filter(it=>it && it.name).map(it=>{
+        const k = byName.get(normName(it.name));   // 和常吃清單同名：一定用清單的數字
+        if(k) return {name: k.name, kcal: k.kcal, protein: k.protein, fat: k.fat, carbs: k.carbs, confidence: "高", note: "使用常吃清單的數字"};
+        const n = v => Math.max(0, Math.round(Number(v || 0) * 10) / 10);
+        return {name: String(it.name), kcal: n(it.kcal), protein: n(it.protein), fat: n(it.fat), carbs: n(it.carb), confidence: ["高","中","低"].includes(it.confidence) ? it.confidence : "低", note: String(it.note || "")};
+      });
+      if(!items.length){ setAiMsg("AI 看不出有哪些食物，換個說法再試試。", true); return; }
+      aiDraft = {date, items};
+      renderAiPreview();
+      setAiMsg(`估算完成，確認或修改後按「加入」。今天還可以用 ${left} 次。`);
+    }catch(e){
+      console.warn("AI 估算失敗", e);
+      setAiMsg(aiErrText(e), true);
+    }finally{
+      aiBusy = false; updateAiBox();
+    }
+  }
+  function renderAiPreview(){
+    const el = document.getElementById("aiPreview");
+    if(!aiDraft || aiDraft.date !== ymd(sd)){ el.innerHTML = ""; return; }
+    const f = (k, l, v) => `<label><span>${l}</span><input data-f="${k}" type="number" inputmode="decimal" min="0" step="any" value="${v ?? ""}"></label>`;
+    el.innerHTML = `<div class="aiprev">` + aiDraft.items.map((it, i)=>`
+      <div class="aiitem" data-i="${i}">
+        <div class="aihead"><label class="ainame"><span>名稱</span><input data-f="name" value="${esc(it.name)}" maxlength="40"></label>
+          <span class="tag${it.confidence === "低" ? " low" : ""}">信心${esc(it.confidence)}</span>
+          <button class="icon del" type="button" data-act="aidel" aria-label="刪掉 ${esc(it.name)}">✕</button></div>
+        <div class="ainums">${f("kcal","熱量 kcal",it.kcal)}${f("protein","蛋白質 g",it.protein)}${f("fat","脂肪 g",it.fat)}${f("carbs","碳水 g",it.carbs)}</div>
+        ${it.note ? `<p class="ainote">${esc(it.note)}</p>` : ""}
+      </div>`).join("") +
+      `<div class="aiacts"><button class="btn primary" type="button" data-act="aiadd">加入 ${aiDraft.items.length} 項</button><button class="btn" type="button" data-act="aicancel">取消</button></div></div>`;
+  }
+  document.getElementById("aiGo").addEventListener("click", runAi);
+  document.getElementById("aiText").addEventListener("keydown", e=>{ if(e.key === "Enter" && !e.isComposing){ e.preventDefault(); runAi(); } });
+  document.getElementById("aiPreview").addEventListener("change", e=>{
+    const row = e.target.closest(".aiitem"); if(!row || !aiDraft) return;
+    const it = aiDraft.items[+row.dataset.i], k = e.target.dataset.f, v = e.target.value.trim();
+    if(k === "name") it.name = v;
+    else{ const n = Number(v); it[k] = v === "" || !isFinite(n) || n < 0 ? (k === "fat" || k === "carbs" ? null : it[k]) : n; }
+  });
+  document.getElementById("aiPreview").addEventListener("click", e=>{
+    const b = e.target.closest("button[data-act]"); if(!b || !aiDraft) return;
+    if(b.dataset.act === "aidel"){ aiDraft.items.splice(+b.closest(".aiitem").dataset.i, 1); if(!aiDraft.items.length) aiDraft = null; renderAiPreview(); return; }
+    if(b.dataset.act === "aicancel"){ aiDraft = null; renderAiPreview(); setAiMsg(""); return; }
+    if(b.dataset.act !== "aiadd") return;
+    const d = dayLog(sd, true);
+    let added = 0;
+    aiDraft.items.forEach(it=>{
+      if(!it.name || !isFinite(Number(it.kcal)) || !isFinite(Number(it.protein))) return;
+      const m = {id:"m-" + uid6(), name: it.name, kcal: Number(it.kcal), protein: Number(it.protein), source: "AI 估計", confidence: it.confidence};
+      if(it.fat != null) m.fat = Number(it.fat);
+      if(it.carbs != null) m.carbs = Number(it.carbs);
+      if(it.note) m.note = it.note;
+      d.meals.push(m); added++;
+    });
+    aiDraft = null;
+    document.getElementById("aiText").value = "";
+    saveLog(sd); renderDiet(sd); renderAiPreview();
+    setAiMsg(`已加入 ${added} 項(標示「AI 估計」)。`);
   });
   document.getElementById("fSum").addEventListener("click", ()=>{
     const c = document.getElementById("fCard");
@@ -1308,7 +1487,7 @@ thead .frow .ft-run{color:var(--accent);font-weight:700}
   });
 
   // ---------- cloud sync (Firebase) ----------
-  const FB_VER = "10.12.2";
+  const FB_VER = "12.19.0";   // 所有 Firebase 模組必須同一版；firebase-ai 要 11.7 以上
   const cfg = window.HABIT_FIREBASE_CONFIG || null;
   const configured = !!(cfg && cfg.apiKey && cfg.projectId && !/請填|YOUR_/i.test(cfg.apiKey));
   let fb = null, unsub = null;
@@ -1337,6 +1516,7 @@ thead .frow .ft-run{color:var(--accent);font-weight:700}
       $("acctInfo").hidden = false; $("acctEmail").textContent = user.email || "已登入";
       ref = fb.fsM.doc(fb.db, "users", user.uid);
       startLogSync(user.uid);
+      updateAiBox();
       // 這台裝置之前開過通知：更新 lastSeen,token 換了也會順便換掉
       const pr = readPushLocal();
       if(pushSupported() && Notification.permission === "granted" && pr && pr.uid === user.uid) registerDevice().catch(()=>{});
@@ -1371,6 +1551,7 @@ thead .frow .ft-run{color:var(--accent);font-weight:700}
     }else{
       mode = "local"; ref = null;
       stopLogSync();
+      updateAiBox();
       $("acctInfo").hidden = true; $("loginBtn").hidden = false;
       setStatus("未登入：資料只存在這個裝置");
     }
@@ -1382,12 +1563,19 @@ thead .frow .ft-run{color:var(--accent);font-weight:700}
       return;
     }
     try{
-      const [appM, authM, fsM] = await Promise.all([
+      const [appM, authM, fsM, acM] = await Promise.all([
         import(`https://www.gstatic.com/firebasejs/${FB_VER}/firebase-app.js`),
         import(`https://www.gstatic.com/firebasejs/${FB_VER}/firebase-auth.js`),
-        import(`https://www.gstatic.com/firebasejs/${FB_VER}/firebase-firestore.js`)
+        import(`https://www.gstatic.com/firebasejs/${FB_VER}/firebase-firestore.js`),
+        import(`https://www.gstatic.com/firebasejs/${FB_VER}/firebase-app-check.js`)
       ]);
       const app = appM.initializeApp(cfg);
+      // App Check 要在使用其他 Firebase 服務之前初始化。本機開發用 debug token(瀏覽器 console 會印出來，登記方式見 README)
+      if(window.HABIT_RECAPTCHA_ENTERPRISE_KEY){
+        if(/^(localhost|127\.0\.0\.1)$/.test(location.hostname)) self.FIREBASE_APPCHECK_DEBUG_TOKEN = true;
+        try{ acM.initializeAppCheck(app, {provider: new acM.ReCaptchaEnterpriseProvider(window.HABIT_RECAPTCHA_ENTERPRISE_KEY), isTokenAutoRefreshEnabled: true}); }
+        catch(e){ console.warn("App Check 初始化失敗", e); }
+      }
       const auth = authM.getAuth(app);
       let db;
       try{ db = fsM.initializeFirestore(app, {localCache: fsM.persistentLocalCache({tabManager: fsM.persistentMultipleTabManager()})}); }
