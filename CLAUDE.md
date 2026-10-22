@@ -18,10 +18,15 @@
   - fitness.presets:[{id:"brunch", name:"固定早午餐", items:[{id, name, kcal, protein, fat, carbs, source:"label"|"estimate"|"tentative"}]}],目前只用第一個。從 startDate 起每天自動計入，不寫入紀錄(FP.dietDay() 計算)
   - fitness.foods:常吃清單 [{id, name, kcal, protein, fat?, carbs?}],新增食物時自動存(同名更新)
   - 匯入備份要保留 habits/checks 以外的欄位
-- 飲食紀錄不放主文件：users/{uid}/logs/{YYYY-MM} = {days:{"DD":{meals:[{id, name, kcal, protein, fat?, carbs?}], brunchSkipped:bool, brunchOff?:[presetItemId]}}}
-  - brunchSkipped:那天整份固定早午餐沒吃；brunchOff:只取消其中幾項。都沒寫就代表照常吃
-  - 本機快取在 localStorage「habit-grid-v1-logs」= {owner:uid|null, months:{"YYYY-MM":{days}}}。未登入只存本機；登入後第一次拿到伺服器資料時，把雲端沒有的天數補上去(雲端已有的那天以雲端為準；別的帳號留下的不上傳)
-  - 匯出備份多一個 logs:{"YYYY-MM":{days}},匯入時拿出來寫回子集合，不能放進主文件
+- 飲食紀錄不放主文件，每天一份：users/{uid}/logs/{YYYY-MM-DD} = {date, month:"YYYY-MM", meals:{[mealId]:{id, name, kcal, protein, fat?, carbs?, at, source?, confidence?, note?}}, brunchSkipped?, brunchOff?:[presetItemId], updatedAt}
+  - meals 是以 id 為 key 的 map(不是陣列),at 是排序用的時間。brunchSkipped:那天整份固定早午餐沒吃；brunchOff:只取消其中幾項。都沒寫就代表照常吃
+  - 寫入一律用「操作」(logOp:put / del / skip / off),先進本機佇列 localStorage「habit-grid-v1-logq」= {ops:[{opId, owner:uid|null, type, date, ...}]} 並立即顯示，
+    再用欄位層級寫入(put 用 mergeFields 只換 meals.{id};del 用 deleteField;off 用 arrayUnion/arrayRemove),伺服器確認(promise resolve)才移出佇列。
+    操作可重送，所以登入時整批送出＝合併上傳，不覆蓋雲端也不重複；兩台裝置同時寫不會互相蓋掉。不要改回整份文件覆蓋
+  - 未登入時 owner:null,登入後併進該帳號；別的帳號的操作不會送出。寫入失敗要 console.error 錯誤代碼並在「今日飲食」顯示同步失敗，30 秒後重試
+  - 顯示 = 雲端快照(onSnapshot 監聽目前顯示的月份，where month == YYYY-MM,includeMetadataChanges)+ 佇列裡的操作
+  - 舊版 localStorage「habit-grid-v1-logs」(按月份、從沒上傳過)在載入時轉成佇列後刪掉
+  - 匯出備份多一個 logs:{"YYYY-MM-DD":{meals:[...], brunchSkipped, brunchOff}};匯入時新舊格式都轉成操作合併，不能放進主文件
   - meals[] 由 AI 估算加入的會多 source:"AI 估計"、confidence:"高"|"中"|"低"、note(估算依據)
 - Firebase JS SDK 統一用 FB_VER(目前 12.19.0),從 gstatic 動態 import;所有模組必須同一版
 - App Check:initCloud() 在 initializeApp 之後、使用其他服務之前 initializeAppCheck(ReCaptchaEnterpriseProvider,金鑰 HABIT_RECAPTCHA_ENTERPRISE_KEY)。localhost / 127.0.0.1 自動開 debug token

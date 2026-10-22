@@ -240,6 +240,12 @@ td.off .rest{color:var(--line-strong)}
 .mini{border:1px solid var(--line-strong);background:var(--sheet);border-radius:6px;padding:3px 8px;font-size:12px;min-height:30px}
 .mini.del.armed{background:var(--danger);border-color:var(--danger);color:var(--sheet)}
 .dnote{margin:0;font-size:12px;color:var(--muted)}
+.dsync{margin:0;font-size:12px;display:flex;align-items:center;gap:6px;color:var(--muted)}
+.dsync::before{content:"";width:8px;height:8px;border-radius:50%;background:var(--muted);flex:none}
+.dsync.ok::before{background:var(--accent)}
+.dsync.busy::before{background:var(--bar)}
+.dsync.err{color:var(--danger);font-weight:700}
+.dsync.err::before{background:var(--danger)}
 .dform{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
 .dform label{display:flex;flex-direction:column;gap:2px;font-size:12px;color:var(--muted)}
 .dform input{font:inherit;color:var(--ink);background:var(--sheet);border:1px solid var(--line-strong);border-radius:6px;padding:7px 9px;min-width:0}
@@ -385,6 +391,7 @@ thead .frow .ft-run{color:var(--accent);font-weight:700}
     <div id="fTop" class="fpart"></div>
     <section class="diet" id="fDiet" aria-label="今日飲食">
       <div id="dietView" class="fpart"></div>
+      <p class="dsync local" id="dietSync" role="status"></p>
       <div class="aibox" id="aiBox" hidden>
         <label for="aiText" class="ailbl">一句話記錄或發問(AI)</label>
         <div class="airow">
@@ -927,70 +934,149 @@ thead .frow .ft-run{color:var(--accent);font-weight:700}
   }
 
   // ---------- 飲食紀錄 ----------
-  // 每月一份:users/{uid}/logs/{YYYY-MM} = {days:{"DD":{meals:[{id,name,kcal,protein,fat?,carbs?}], brunchSkipped, brunchOff?:[itemId]}}}
-  // 不放在主文件。本機一律快取在 localStorage({owner, months}),登入時才同步到 Firestore。
+  // 每天一份:users/{uid}/logs/{YYYY-MM-DD} = {date, month:"YYYY-MM", meals:{[mealId]:{name, kcal, protein, fat?, carbs?, at, source?, confidence?, note?}},
+  //   brunchSkipped?, brunchOff?:[presetItemId], updatedAt}。不放在主文件。
+  // 所有修改都是「操作」(put / del / skip / off):先存進本機佇列(localStorage)並立即顯示，再用欄位層級寫入 Firestore
+  // (meals.{id} 單獨覆蓋或刪除、brunchOff 用 arrayUnion / arrayRemove),伺服器確認後才移出佇列。
+  // 操作都可以重送，所以登入時把佇列整批送出＝合併上傳：不會覆蓋雲端，也不會重複。兩台裝置同時記錄也不會互相蓋掉。
   // 固定早午餐不寫入紀錄，由 FP.dietDay() 依 startDate 計算；只有「沒吃」才寫 brunchSkipped / brunchOff。
-  const LOGS_KEY = LS_KEY + "-logs";
-  let logStore = readLogs(), logsUnsub = null, logTimer = null, logsSynced = false;
-  const logDirty = new Set();
-  function readLogs(){ try{ const o = JSON.parse(localStorage.getItem(LOGS_KEY)); if(o && o.months && typeof o.months === "object") return o; }catch(e){} return {owner:null, months:{}}; }
-  function writeLogs(){ try{ localStorage.setItem(LOGS_KEY, JSON.stringify(logStore)); }catch(e){} }
+  const LOGQ_KEY = LS_KEY + "-logq";        // 待上傳佇列 {ops:[{opId, owner:uid|null, type, date, ...}]}
+  const OLD_LOGS_KEY = LS_KEY + "-logs";    // 舊版只存在本機的紀錄(按月份),轉成佇列後刪掉
+  let logQ = readLogQ();
+  let logDays = {};                          // 監聽中的月份的雲端資料 {"YYYY-MM-DD": 文件內容}
+  let logSub = null, logSubMonth = null, logUid = null;
+  let logSync = {error:null, fromCache:true, pendingWrites:false};
+  const inflight = new Set(); let retryTimer = null;
+  function readLogQ(){ try{ const o = JSON.parse(localStorage.getItem(LOGQ_KEY)); if(o && Array.isArray(o.ops)) return o; }catch(e){} return {ops:[]}; }
+  function writeLogQ(){ try{ localStorage.setItem(LOGQ_KEY, JSON.stringify(logQ)); }catch(e){} }
   const monthKeyOf = d => `${d.getFullYear()}-${pad(d.getMonth()+1)}`;
-  function dayLog(date, create){
-    const mk = monthKeyOf(date), dk = pad(date.getDate());
-    let m = logStore.months[mk];
-    if(!m){ if(!create) return {}; m = logStore.months[mk] = {days:{}}; }
-    if(!m.days) m.days = {};
-    let d = m.days[dk];
-    if(!d){ if(!create) return {}; d = m.days[dk] = {meals:[], brunchSkipped:false}; }
-    if(!Array.isArray(d.meals)) d.meals = [];
-    return d;
+  const cleanMeal = m => JSON.parse(JSON.stringify(m));   // 去掉 undefined(Firestore 不收)
+  const newOpId = () => Date.now().toString(36) + uid6();
+  // 把一天的紀錄(陣列或 map 格式都可)轉成操作，用在舊資料轉換和匯入備份
+  function dayToOps(date, d, owner){
+    const ops = [], meals = Array.isArray(d.meals) ? d.meals : Object.values(d.meals || {});
+    meals.forEach((m, i)=>{ if(m && m.id) ops.push({opId: newOpId() + i, owner, type:"put", date, meal: cleanMeal({...m, at: m.at || Date.parse(date) + i})}); });
+    if(d.brunchSkipped) ops.push({opId: newOpId(), owner, type:"skip", date, value:true});
+    (d.brunchOff || []).forEach((id, i)=>ops.push({opId: newOpId() + "o" + i, owner, type:"off", date, id, value:true}));
+    return ops;
   }
-  function saveLog(date){
-    writeLogs();
-    logDirty.add(monthKeyOf(date));
-    if(!logsSynced) return;   // 未登入：只存本機，登入後再上傳
-    clearTimeout(logTimer); logTimer = setTimeout(flushLogs, 600);
+  (function migrateOldLogs(){   // 舊版沒上傳過的紀錄 → 佇列(只做一次；佇列要等伺服器確認才會清)
+    let old = null; try{ old = JSON.parse(localStorage.getItem(OLD_LOGS_KEY)); }catch(e){}
+    if(!old || !old.months) return;
+    for(const mk in old.months){
+      const days = (old.months[mk] || {}).days || {};
+      for(const dk in days) logQ.ops.push(...dayToOps(`${mk}-${pad(+dk)}`, days[dk] || {}, old.owner || null));
+    }
+    writeLogQ();
+    try{ localStorage.removeItem(OLD_LOGS_KEY); }catch(e){}
+  })();
+
+  function applyOp(day, op){
+    if(op.type === "put") day.meals[op.meal.id] = op.meal;
+    else if(op.type === "del") delete day.meals[op.id];
+    else if(op.type === "skip"){ day.brunchSkipped = op.value; if(!op.value) day.brunchOff = []; }
+    else if(op.type === "off"){ const s = new Set(day.brunchOff); if(op.value) s.add(op.id); else s.delete(op.id); day.brunchOff = [...s]; }
   }
-  function flushLogs(){
-    logTimer = null;
-    const uid = currentUid(); if(!uid || !logsSynced) return;
-    logDirty.forEach(mk=>{
-      const data = JSON.parse(JSON.stringify(logStore.months[mk] || {days:{}}));
-      fb.fsM.setDoc(fb.fsM.doc(fb.db, "users", uid, "logs", mk), data).catch(()=>setStatus("飲食紀錄同步失敗，先存在這個裝置","warn"));
+  const myOps = () => logQ.ops.filter(o=>o.owner === null || o.owner === logUid);
+  // 某一天要顯示的紀錄：雲端資料(登入時)+ 還在佇列裡的操作
+  function dayLog(date){
+    const key = ymd(date), base = logUid ? logDays[key] : null;
+    const day = {meals: {...((base && base.meals) || {})}, brunchSkipped: !!(base && base.brunchSkipped), brunchOff: [...((base && base.brunchOff) || [])]};
+    myOps().forEach(o=>{ if(o.date === key) applyOp(day, o); });
+    return {meals: Object.values(day.meals).sort((a,b)=>(a.at || 0) - (b.at || 0)), brunchSkipped: day.brunchSkipped, brunchOff: day.brunchOff};
+  }
+  function logOp(op){
+    op.opId = newOpId(); op.owner = logUid;
+    logQ.ops.push(op); writeLogQ();
+    renderDiet(sd);
+    flushLogQ();
+  }
+  function writeOp(uid, op){
+    const F = fb.fsM, ref = F.doc(fb.db, "users", uid, "logs", op.date);
+    const base = {date: op.date, month: op.date.slice(0, 7), updatedAt: F.serverTimestamp()};
+    if(op.type === "put")   // 只整個換掉這一筆，其他筆不動
+      return F.setDoc(ref, {...base, meals: {[op.meal.id]: op.meal}}, {mergeFields: ["date", "month", "updatedAt", new F.FieldPath("meals", op.meal.id)]});
+    if(op.type === "del") return F.setDoc(ref, {...base, meals: {[op.id]: F.deleteField()}}, {merge: true});
+    if(op.type === "skip") return F.setDoc(ref, op.value ? {...base, brunchSkipped: true} : {...base, brunchSkipped: false, brunchOff: []}, {merge: true});
+    if(op.type === "off") return F.setDoc(ref, {...base, brunchOff: op.value ? F.arrayUnion(op.id) : F.arrayRemove(op.id)}, {merge: true});
+    return Promise.resolve();
+  }
+  // 把佇列送到 Firestore。伺服器確認(promise resolve)才移出佇列；失敗時顯示錯誤、印出錯誤代碼，30 秒後重試
+  function flushLogQ(){
+    const uid = logUid;
+    if(!uid || !fb){ setLogSync(); return; }
+    let claimed = false;
+    myOps().forEach(op=>{
+      if(inflight.has(op.opId)) return;
+      if(op.owner === null){ op.owner = uid; claimed = true; }   // 未登入時的紀錄併進這個帳號
+      inflight.add(op.opId);
+      writeOp(uid, op).then(()=>{
+        inflight.delete(op.opId);
+        logQ.ops = logQ.ops.filter(o=>o.opId !== op.opId); writeLogQ();
+        logSync.error = null; setLogSync();
+      }).catch(e=>{
+        inflight.delete(op.opId);
+        console.error("[飲食同步] 寫入失敗", e && e.code, e);
+        logSync.error = (e && e.code) || "unknown"; setLogSync();
+        clearTimeout(retryTimer); retryTimer = setTimeout(flushLogQ, 30000);
+      });
     });
-    logDirty.clear();
+    if(claimed) writeLogQ();
+    setLogSync();
   }
-  // 登入後訂閱 users/{uid}/logs;第一次拿到伺服器資料時，把本機(未登入時)的紀錄補上去：雲端已有的那天以雲端為準
-  function startLogSync(uid){
-    stopLogSync();
-    logsUnsub = fb.fsM.onSnapshot(fb.fsM.collection(fb.db, "users", uid, "logs"), snap=>{
-      if(logTimer) return;   // 本機還有沒送出的修改
-      const cloud = {}; snap.forEach(d=>{ cloud[d.id] = d.data(); });
-      if(!logsSynced){
-        if(snap.metadata.fromCache) return;   // 等伺服器的資料再合併
-        const mine = logStore.owner === null || logStore.owner === uid;   // 別的帳號留下的紀錄不上傳
-        if(mine) for(const mk in logStore.months){
-          const local = (logStore.months[mk] || {}).days || {};
-          for(const dk in local){
-            const cm = cloud[mk] || (cloud[mk] = {days:{}}); if(!cm.days) cm.days = {};
-            if(!cm.days[dk]){ cm.days[dk] = local[dk]; logDirty.add(mk); }
-          }
-        }
-        logStore = {owner: uid, months: cloud};
-        logsSynced = true;
-        writeLogs();
-        if(logDirty.size) flushLogs();
-        renderToday();
-        return;
-      }
-      if(stableJSON(cloud) !== stableJSON(logStore.months)){ logStore.months = cloud; writeLogs(); renderToday(); }
-    }, ()=>{ logsSynced = false; });
+  // 即時監聽目前顯示的月份(另一台裝置新增、修改、刪除會馬上反映)
+  function ensureLogSub(month){
+    if(!logUid || !fb || (logSub && logSubMonth === month)) return;
+    if(logSub){ logSub(); logSub = null; }
+    logSubMonth = month; logDays = {};
+    const F = fb.fsM, q = F.query(F.collection(fb.db, "users", logUid, "logs"), F.where("month", "==", month));
+    logSub = F.onSnapshot(q, {includeMetadataChanges: true}, snap=>{
+      const days = {}; snap.forEach(d=>{ days[d.id] = d.data(); });
+      logDays = days;
+      logSync.fromCache = snap.metadata.fromCache; logSync.pendingWrites = snap.metadata.hasPendingWrites;
+      renderDiet(sd);
+    }, e=>{
+      console.error("[飲食同步] 監聽失敗", e && e.code, e);
+      logSync.error = (e && e.code) || "unknown"; logSub = null; logSubMonth = null; setLogSync();
+    });
   }
-  function stopLogSync(){
-    if(logsUnsub){ logsUnsub(); logsUnsub = null; }
-    if(logTimer){ clearTimeout(logTimer); flushLogs(); }
-    logsSynced = false;
+  function logsLogin(uid){
+    logsLogout(true);
+    logUid = uid; logSync = {error:null, fromCache:true, pendingWrites:false};
+    flushLogQ();
+    ensureLogSub(monthKeyOf(sd));
+    renderDiet(sd);
+  }
+  function logsLogout(quiet){
+    if(logSub){ logSub(); logSub = null; }
+    logSubMonth = null; logUid = null; logDays = {}; inflight.clear(); clearTimeout(retryTimer);
+    if(!quiet) renderDiet(sd);
+  }
+  window.addEventListener("online", ()=>{ flushLogQ(); setLogSync(); });
+  window.addEventListener("offline", ()=>setLogSync());
+  function setLogSync(){
+    const el = document.getElementById("dietSync"); if(!el) return;
+    const pending = myOps().length;
+    let cls, text;
+    if(!logUid){ cls = "local"; text = pending ? `只存在這台裝置(${pending} 筆，登入後自動合併上傳)` : "只存在這台裝置(登入後會同步)"; }
+    else if(logSync.error){ cls = "err"; text = `同步失敗(${logSync.error}),紀錄先存在這台裝置，30 秒後重試`; }
+    else if(!navigator.onLine && (pending || logSync.pendingWrites)){ cls = "busy"; text = "離線中，連上網路後自動同步"; }
+    else if(pending || inflight.size || logSync.pendingWrites){ cls = "busy"; text = `同步中…${pending ? `(${pending} 筆)` : ""}`; }
+    else if(logSync.fromCache){ cls = "busy"; text = navigator.onLine ? "連線中…" : "離線中，顯示上次同步的資料"; }
+    else{ cls = "ok"; text = "已同步"; }
+    el.className = "dsync " + cls; el.textContent = text;
+  }
+  // 匯出用：所有日子的紀錄(登入時含雲端全部)+ 佇列
+  async function allLogsForExport(){
+    const days = {};
+    if(logUid && fb){
+      const snap = await fb.fsM.getDocs(fb.fsM.collection(fb.db, "users", logUid, "logs"));
+      snap.forEach(d=>{ const x = d.data(); days[d.id] = {meals: {...(x.meals || {})}, brunchSkipped: !!x.brunchSkipped, brunchOff: [...(x.brunchOff || [])]}; });
+    }
+    myOps().forEach(o=>{ applyOp(days[o.date] || (days[o.date] = {meals:{}, brunchSkipped:false, brunchOff:[]}), o); });
+    const out = {};
+    Object.keys(days).sort().forEach(k=>{ const d = days[k]; out[k] = {meals: Object.values(d.meals).sort((a,b)=>(a.at || 0) - (b.at || 0)), brunchSkipped: d.brunchSkipped, brunchOff: d.brunchOff}; });
+    return out;
   }
 
   const fmtN = n => String(Math.round(Number(n || 0) * 10) / 10);
@@ -1002,7 +1088,8 @@ thead .frow .ft-run{color:var(--accent);font-weight:700}
       if(aiDraft || aiAnswer){ aiDraft = null; aiAnswer = null; renderAiPreview(); renderAiAnswer(); setAiMsg(""); }
     }
     updateAiBox();
-    const D = FP.dietDay(state.fitness, dayLog(date, false), date), F = state.fitness;
+    ensureLogSub(monthKeyOf(date)); setLogSync();
+    const D = FP.dietDay(state.fitness, dayLog(date), date), F = state.fitness;
     const bar = (label, eaten, target, unit) => {
       const p = target ? Math.min(100, eaten / target * 100) : 0;
       return `<div class="dbar"><span>${label}</span><div class="meter" role="progressbar" aria-label="${label}" aria-valuemin="0" aria-valuemax="${target || 0}" aria-valuenow="${fmtN(eaten)}"><i class="${target && eaten > target ? "over" : ""}" style="width:${p}%"></i></div><span class="dv">${fmtN(eaten)} / ${target ? fmtN(target) : "—"} ${unit}</span></div>`;
@@ -1061,10 +1148,12 @@ thead .frow .ft-run{color:var(--accent);font-weight:700}
     const fat = opt("dfFat"), carbs = opt("dfCarbs");
     if(fat != null && isFinite(fat)) m.fat = fat;
     if(carbs != null && isFinite(carbs)) m.carbs = carbs;
-    const d = dayLog(sd, true), i = d.meals.findIndex(x=>x.id === m.id);
-    if(i >= 0) ["source","confidence","note"].forEach(k=>{ if(d.meals[i][k] != null) m[k] = d.meals[i][k]; });   // 修改 AI 估計的那筆時保留標記
-    if(i >= 0) d.meals[i] = m; else d.meals.push(m);
-    saveLog(sd); if(!m.source) rememberFood(m); closeDietForm(); renderDiet(sd);
+    const prev = dayLog(sd).meals.find(x=>x.id === m.id);
+    if(prev) ["source","confidence","note","at"].forEach(k=>{ if(prev[k] != null) m[k] = prev[k]; });   // 修改 AI 估計的那筆時保留標記
+    if(m.at == null) m.at = Date.now();
+    closeDietForm();
+    logOp({type:"put", date: ymd(sd), meal: cleanMeal(m)});
+    if(!m.source) rememberFood(m);
   });
   document.getElementById("dfCancel").addEventListener("click", closeDietForm);
   document.getElementById("fDiet").addEventListener("click", e=>{
@@ -1073,25 +1162,21 @@ thead .frow .ft-run{color:var(--accent);font-weight:700}
       const f = (state.fitness.foods || []).find(x=>x.id === fav.dataset.fav); if(!f) return;
       const m = {id:"m-" + uid6(), name:f.name, kcal:f.kcal, protein:f.protein};
       if(f.fat != null) m.fat = f.fat; if(f.carbs != null) m.carbs = f.carbs;
-      dayLog(sd, true).meals.push(m); saveLog(sd); renderDiet(sd);
+      m.at = Date.now();
+      logOp({type:"put", date: ymd(sd), meal: cleanMeal(m)});
       return;
     }
     const b = e.target.closest("button[data-act]"); if(!b || !b.closest("#dietView")) return;
     const act = b.dataset.act;
     if(act === "add"){ openDietForm(null); return; }
-    const d = dayLog(sd, true);
-    if(act === "skip"){ d.brunchSkipped = !d.brunchSkipped; if(!d.brunchSkipped) delete d.brunchOff; }
-    else if(act === "off"){
-      const off = new Set(d.brunchOff || []);
-      off.has(b.dataset.id) ? off.delete(b.dataset.id) : off.add(b.dataset.id);
-      if(off.size) d.brunchOff = [...off]; else delete d.brunchOff;
-    }
+    const d = dayLog(sd), date = ymd(sd);
+    if(act === "skip") logOp({type:"skip", date, value: !d.brunchSkipped});
+    else if(act === "off") logOp({type:"off", date, id: b.dataset.id, value: !d.brunchOff.includes(b.dataset.id)});
     else if(act === "edit"){ const m = d.meals.find(x=>x.id === b.dataset.id); if(m) openDietForm(m); return; }
     else if(act === "del"){
       if(!b.classList.contains("armed")){ b.classList.add("armed"); b.textContent = "確定"; setTimeout(()=>{ if(b.isConnected){ b.classList.remove("armed"); b.textContent = "✕"; } }, 3000); return; }
-      d.meals = d.meals.filter(x=>x.id !== b.dataset.id);
-    } else return;
-    saveLog(sd); renderDiet(sd);
+      logOp({type:"del", date, id: b.dataset.id});
+    }
   });
 
   // ---------- 一句話記錄(AI 估算) ----------
@@ -1123,7 +1208,7 @@ thead .frow .ft-run{color:var(--accent);font-weight:700}
   let aiM = null, aiModel = null, aiBusy = false, aiDraft = null, aiAnswer = null;
   // 發問時給 AI 的今天狀況：日期、課表、目標、已吃的東西、程式算好的「還差」、晚餐規則。不含體重、InBody、腰圍等身體數據
   function aiContext(date){
-    const F = state.fitness, f = fitnessDay(date), D = FP.dietDay(F, dayLog(date, false), date);
+    const F = state.fitness, f = fitnessDay(date), D = FP.dietDay(F, dayLog(date), date);
     return {
       日期: `${ymd(date)}(星期${DOW[date.getDay()]})`,
       健身計畫: f ? FP.phaseLabel(f) : "沒有計畫",
@@ -1266,19 +1351,18 @@ thead .frow .ft-run{color:var(--accent);font-weight:700}
     if(b.dataset.act === "aidel"){ aiDraft.items.splice(+b.closest(".aiitem").dataset.i, 1); if(!aiDraft.items.length) aiDraft = null; renderAiPreview(); return; }
     if(b.dataset.act === "aicancel"){ aiDraft = null; renderAiPreview(); setAiMsg(""); return; }
     if(b.dataset.act !== "aiadd") return;
-    const d = dayLog(sd, true);
     let added = 0;
-    aiDraft.items.forEach(it=>{
+    aiDraft.items.forEach((it, i)=>{
       if(!it.name || !isFinite(Number(it.kcal)) || !isFinite(Number(it.protein))) return;
-      const m = {id:"m-" + uid6(), name: it.name, kcal: Number(it.kcal), protein: Number(it.protein), source: "AI 估計", confidence: it.confidence};
+      const m = {id:"m-" + uid6(), name: it.name, kcal: Number(it.kcal), protein: Number(it.protein), source: "AI 估計", confidence: it.confidence, at: Date.now() + i};
       if(it.fat != null) m.fat = Number(it.fat);
       if(it.carbs != null) m.carbs = Number(it.carbs);
       if(it.note) m.note = it.note;
-      d.meals.push(m); added++;
+      logOp({type:"put", date: ymd(sd), meal: cleanMeal(m)}); added++;
     });
     aiDraft = null;
     document.getElementById("aiText").value = "";
-    saveLog(sd); renderDiet(sd); renderAiPreview();
+    renderAiPreview();
     setAiMsg(`已加入 ${added} 項(標示「AI 估計」)。`);
   });
   document.getElementById("fSum").addEventListener("click", ()=>{
@@ -1504,9 +1588,11 @@ thead .frow .ft-run{color:var(--accent);font-weight:700}
   setStatus("資料存在這個裝置");
 
   // ---------- backup ----------
-  document.getElementById("exportBtn").addEventListener("click", ()=>{
-    // 飲食紀錄不在主文件裡，匯出時另外放在 logs:{"YYYY-MM":{days:{...}}}
-    const blob = new Blob([JSON.stringify({...state, logs: logStore.months}, null, 2)], {type:"application/json"});
+  document.getElementById("exportBtn").addEventListener("click", async ()=>{
+    // 飲食紀錄不在主文件裡，匯出時另外放在 logs:{"YYYY-MM-DD":{meals:[...], brunchSkipped, brunchOff}}
+    let logs = {};
+    try{ logs = await allLogsForExport(); }catch(e){ console.error("[飲食同步] 匯出時讀取失敗", e && e.code, e); setStatus("讀不到雲端的飲食紀錄，備份只包含這台裝置的部分","warn"); }
+    const blob = new Blob([JSON.stringify({...state, logs}, null, 2)], {type:"application/json"});
     const a = document.createElement("a");
     const d = new Date();
     a.href = URL.createObjectURL(blob);
@@ -1523,10 +1609,13 @@ thead .frow .ft-run{color:var(--accent);font-weight:700}
       const {logs, ...rest} = o;   // logs 存在子集合，不能放進主文件
       state = {...rest, checks:o.checks||{}};
       ensureFitness(state);
-      if(logs && typeof logs === "object"){
-        for(const mk in logs){ if(/^\d{4}-\d{2}$/.test(mk) && logs[mk] && typeof logs[mk] === "object"){ logStore.months[mk] = logs[mk]; logDirty.add(mk); } }
-        writeLogs();
-        if(logsSynced) flushLogs();
+      if(logs && typeof logs === "object"){   // 新格式 {"YYYY-MM-DD":{...}} 或舊格式 {"YYYY-MM":{days:{"DD":{...}}}},都轉成操作合併進去
+        for(const k in logs){
+          const v = logs[k]; if(!v || typeof v !== "object") continue;
+          if(/^\d{4}-\d{2}-\d{2}$/.test(k)) logQ.ops.push(...dayToOps(k, v, logUid));
+          else if(/^\d{4}-\d{2}$/.test(k)) for(const dk in (v.days || {})) logQ.ops.push(...dayToOps(`${k}-${pad(+dk)}`, v.days[dk] || {}, logUid));
+        }
+        writeLogQ(); flushLogQ();
       }
       renderEditor(); render(); scheduleSave();
       if(!document.getElementById("fitSettings").hidden) renderFitSettings();
@@ -1564,7 +1653,7 @@ thead .frow .ft-run{color:var(--accent);font-weight:700}
       $("authBox").hidden = true; $("loginBtn").hidden = true;
       $("acctInfo").hidden = false; $("acctEmail").textContent = user.email || "已登入";
       ref = fb.fsM.doc(fb.db, "users", user.uid);
-      startLogSync(user.uid);
+      logsLogin(user.uid);
       updateAiBox();
       // 這台裝置之前開過通知：更新 lastSeen,token 換了也會順便換掉
       const pr = readPushLocal();
@@ -1599,7 +1688,7 @@ thead .frow .ft-run{color:var(--accent);font-weight:700}
       }, ()=>{ mode = "local"; setStatus("無法同步，資料先存在這個裝置","warn"); });
     }else{
       mode = "local"; ref = null;
-      stopLogSync();
+      logsLogout();
       updateAiBox();
       $("acctInfo").hidden = true; $("loginBtn").hidden = false;
       setStatus("未登入：資料只存在這個裝置");

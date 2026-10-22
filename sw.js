@@ -1,6 +1,6 @@
 // 離線快取：沒網路時也能打開 App 打卡，連上網路後 Firebase 會自動補同步。
 // 也負責顯示推播通知(沒有另外的 firebase-messaging-sw.js)。
-const CACHE = "habit-grid-v2";
+const CACHE = "habit-grid-v3";
 const SHELL = ["./", "index.html", "firebase-config.js", "fitness-plan.js", "manifest.webmanifest", "icon-192.png", "icon-512.png"];
 self.addEventListener("install", e => { e.waitUntil(caches.open(CACHE).then(c => c.addAll(SHELL))); self.skipWaiting(); });
 self.addEventListener("activate", e => {
