@@ -35,6 +35,8 @@
   - log:可編輯預覽，按「加入」才寫入；和常吃清單 / 固定早午餐同名的項目，前端一律換回清單數字
   - question:只在輸入框下方顯示 answer(附「AI 建議僅供參考」),不寫入任何東西；unclear:顯示提示
   - 送出的內容：輸入的那句話、已知食物的營養數字、aiContext()(日期、計畫第幾天、課表、目標、已吃項目與合計、程式算好的「還差」、晚餐三件事)。不送體重、InBody、腰圍等身體數據
+  - 429 由 aiQuotaKind() 從 customErrorData.errorDetails 的 quotaId(PerMinute / PerDay)或 retryDelay 判斷；每分鐘上限鎖按鈕 60 秒，每日上限提示台灣下午 3 點(冬令 4 點)恢復
+  - AI 只能由「送出」按鈕或 Enter(非 repeat)觸發，aiBusy 在第一個 await 前就鎖；render / onSnapshot 不可以呼叫 AI
   - 每天最多 30 次(AI_DAILY_LIMIT),記在 users/{uid}/meta/aiUsage = {date:"YYYY-MM-DD"(台灣), count, updatedAt},呼叫前用交易扣次數
   - 結果先顯示可編輯的預覽，按「加入」才寫進 logs;只有登入後能用，失敗時手動輸入照常可用
 - 網址加 ?today=YYYY-MM-DD 會把那天當作今天(測試用),所有「今天」都要用 today0() 取得

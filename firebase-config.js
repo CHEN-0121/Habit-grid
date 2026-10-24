@@ -16,6 +16,6 @@ window.HABIT_FCM_VAPID_KEY = "BLfS_eqE-zrEY01vfVWAibO6XmsO-NGcn3HZHnv9t_n-rww-YV
 // 在 localhost / 127.0.0.1 開發時會改用 debug token(設定方式見 README)。
 window.HABIT_RECAPTCHA_ENTERPRISE_KEY = "6LdTxPotAAAAAIg5Wzsqmjjx6s2Qzwmu0rGBMtkb";
 
-// 「一句話記錄」用的 Gemini 模型(Firebase AI Logic + Gemini Developer API,免費方案可用的 Flash 系列)。
-// 模型停用時改這裡就好，可用的名稱見 https://firebase.google.com/docs/ai-logic/models
-window.HABIT_AI_MODEL = "gemini-3.5-flash";
+// 「一句話記錄」用的 Gemini 模型(Firebase AI Logic + Gemini Developer API,免費方案可用的 Flash-Lite 系列，額度比 Flash 寬)。
+// 模型停用時改這裡就好，可用的名稱見 https://firebase.google.com/docs/ai-logic/models ;自己專案的實際額度在 AI Studio 看
+window.HABIT_AI_MODEL = "gemini-3.5-flash-lite";

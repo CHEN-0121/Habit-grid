@@ -1205,7 +1205,7 @@ thead .frow .ft-run{color:var(--accent);font-weight:700}
     "4. 只能給建議，不能說你已經修改了目標、課表或紀錄。"
   ].join("\n");
   const AI_UNCLEAR = "可以輸入吃了什麼，或直接問問題，例如「晚餐在自助餐怎麼夾」。";
-  let aiM = null, aiModel = null, aiBusy = false, aiDraft = null, aiAnswer = null;
+  let aiM = null, aiModel = null, aiBusy = false, aiDraft = null, aiAnswer = null, aiCooldownUntil = 0, aiCooldownTimer = null;
   // 發問時給 AI 的今天狀況：日期、課表、目標、已吃的東西、程式算好的「還差」、晚餐規則。不含體重、InBody、腰圍等身體數據
   function aiContext(date){
     const F = state.fitness, f = fitnessDay(date), D = FP.dietDay(F, dayLog(date), date);
@@ -1258,12 +1258,27 @@ thead .frow .ft-run{color:var(--accent);font-weight:700}
       return AI_DAILY_LIMIT - count - 1;
     });
   }
+  // 429 是哪一種額度：Gemini 的錯誤細節(customErrorData.errorDetails)會帶 quotaId(…PerMinute… / …PerDay…)和 RetryInfo.retryDelay。
+  // 每日額度在太平洋時間午夜重置(台灣下午 3 點，冬令時間 4 點)。回傳 "minute" | "day" | "unknown" | null(不是額度錯誤)
+  function aiQuotaKind(e){
+    const cd = (e && e.customErrorData) || {};
+    const hay = `${(e && e.message) || ""} ${JSON.stringify(cd.errorDetails || [])}`;
+    if(cd.status !== 429 && !/\b429\b|RESOURCE_EXHAUSTED|quota/i.test(hay)) return null;
+    if(/PerDay|per[_ ]?day|daily/i.test(hay)) return "day";
+    if(/PerMinute|per[_ ]?minute/i.test(hay)) return "minute";
+    const m = /retryDelay"?\s*:\s*"(\d+(?:\.\d+)?)s"|retry in (\d+(?:\.\d+)?)\s*s/i.exec(hay);
+    if(m){ const sec = Number(m[1] || m[2]); return sec > 3600 ? "day" : "minute"; }
+    return "unknown";
+  }
   function aiErrText(e){
     const s = `${(e && e.code) || ""} ${(e && e.message) || e}`;
     if(e && e.stage === "quota") return /permission-denied/.test(s) ? "沒有權限記錄 AI 使用次數(Firestore 規則可能還沒發布)。可以先手動輸入。"
       : "連不上資料庫，可能離線了。可以先手動輸入。";
     if(!navigator.onLine || /network|offline|Failed to fetch/i.test(s)) return "目前離線或網路不穩，請稍後再試，或先手動輸入。";
-    if(/429|quota|RESOURCE_EXHAUSTED|rate.?limit/i.test(s)) return "AI 的免費額度暫時用完了(429),請過一陣子再試，或先手動輸入。";
+    const q = aiQuotaKind(e);
+    if(q === "day") return "今天的額度已用完，台灣時間下午 3 點(冬令時間 4 點)後恢復。可以先手動輸入。";
+    if(q === "minute") return "AI 每分鐘的次數到上限了，請 1 分鐘後再試。可以先手動輸入。";
+    if(q === "unknown") return "AI 額度暫時用完(429),請 1 分鐘後再試；如果一直出現，可能是今天的額度用完了(台灣時間下午 3 點，冬令時間 4 點後恢復)。";
     if(/app.?check|appCheck|403|PERMISSION_DENIED|unauthenticated/i.test(s)) return "App Check 驗證沒通過或 AI Logic 還沒啟用，AI 暫時不能用(見 README)。可以先手動輸入。";
     if(/404|not.?found|model/i.test(s)) return `找不到模型「${window.HABIT_AI_MODEL}」,可能已經停用，要到 firebase-config.js 換模型。可以先手動輸入。`;
     if(/JSON|parse/i.test(s)) return "AI 回傳的格式有問題，請換個說法再試，或手動輸入。";
@@ -1275,13 +1290,16 @@ thead .frow .ft-run{color:var(--accent);font-weight:700}
     const box = document.getElementById("aiBox"), on = mode === "cloud";
     box.hidden = !window.HABIT_AI_MODEL;
     document.getElementById("aiText").disabled = !on;
-    const go = document.getElementById("aiGo");
-    go.disabled = !on || aiBusy; go.textContent = aiBusy ? "處理中…" : "送出";
+    const go = document.getElementById("aiGo"), wait = Math.ceil((aiCooldownUntil - Date.now()) / 1000);
+    go.disabled = !on || aiBusy || wait > 0;
+    go.textContent = aiBusy ? "處理中…" : wait > 0 ? `${wait} 秒後` : "送出";
+    clearTimeout(aiCooldownTimer);
+    if(wait > 0 && !aiBusy) aiCooldownTimer = setTimeout(updateAiBox, 1000);   // 倒數到 0 自動解鎖
     if(!on && !aiBusy) setAiMsg("登入後才能用 AI,手動「＋新增」照常可以用。");
     else if(on && document.getElementById("aiMsg").textContent.startsWith("登入後")) setAiMsg("");
   }
   async function runAi(){
-    if(aiBusy) return;   // 送出後鎖住，避免連點
+    if(aiBusy || Date.now() < aiCooldownUntil) return;   // 送出後鎖住，避免連點；每分鐘上限的倒數中也不送(Enter 也擋)
     const text = document.getElementById("aiText").value.trim();
     if(!text){ setAiMsg(AI_UNCLEAR, true); return; }
     const uid = currentUid(); if(!uid){ updateAiBox(); return; }
@@ -1318,8 +1336,9 @@ thead .frow .ft-run{color:var(--accent);font-weight:700}
       renderAiPreview();
       setAiMsg(`估算完成，確認或修改後按「加入」。今天還可以用 ${left} 次。`);
     }catch(e){
-      console.warn("AI 估算失敗", e);
+      console.warn("AI 估算失敗", e && e.code, e && e.customErrorData && e.customErrorData.status, e);
       setAiMsg(aiErrText(e), true);
+      if(["minute", "unknown"].includes(aiQuotaKind(e))) aiCooldownUntil = Date.now() + 60000;   // 每分鐘上限：按鈕鎖 60 秒，免得一直重按又被擋
     }finally{
       aiBusy = false; updateAiBox();
     }
@@ -1339,7 +1358,8 @@ thead .frow .ft-run{color:var(--accent);font-weight:700}
       `<div class="aiacts"><button class="btn primary" type="button" data-act="aiadd">加入 ${aiDraft.items.length} 項</button><button class="btn" type="button" data-act="aicancel">取消</button></div></div>`;
   }
   document.getElementById("aiGo").addEventListener("click", runAi);
-  document.getElementById("aiText").addEventListener("keydown", e=>{ if(e.key === "Enter" && !e.isComposing){ e.preventDefault(); runAi(); } });
+  // AI 只有這兩個觸發點(點按鈕、按 Enter);畫面重繪、onSnapshot 都不會呼叫。按住 Enter 的自動重複不算
+  document.getElementById("aiText").addEventListener("keydown", e=>{ if(e.key === "Enter" && !e.isComposing){ e.preventDefault(); if(!e.repeat) runAi(); } });
   document.getElementById("aiPreview").addEventListener("change", e=>{
     const row = e.target.closest(".aiitem"); if(!row || !aiDraft) return;
     const it = aiDraft.items[+row.dataset.i], k = e.target.dataset.f, v = e.target.value.trim();

@@ -137,7 +137,7 @@ App ─ App Check(reCAPTCHA Enterprise)─→ Firebase AI Logic ─→ Gemini De
 ```
 
 - 全部免費：用 **Gemini Developer API**(不是 Vertex AI),Spark 免費方案就能用，不需要 Blaze
-- 模型名稱在 `firebase-config.js` 的 `HABIT_AI_MODEL`(目前 `gemini-3.5-flash`)。模型被停用時，到 https://firebase.google.com/docs/ai-logic/models 找新的 Flash 型號換掉即可
+- 模型名稱在 `firebase-config.js` 的 `HABIT_AI_MODEL`(目前 `gemini-3.5-flash-lite`,Flash-Lite 系列的免費額度比 Flash 寬)。模型被停用時，到 https://firebase.google.com/docs/ai-logic/models 找新的 Flash-Lite 型號換掉即可。自己專案實際的每分鐘 / 每日額度在 AI Studio 看
 - 和常吃清單或固定早午餐同名的食物，直接用清單裡的數字
 - 只有登入後才能用；額度用完、離線或出錯時會說明原因，手動「＋新增」照常可用
 
@@ -159,7 +159,9 @@ App ─ App Check(reCAPTCHA Enterprise)─→ Firebase AI Logic ─→ Gemini De
 
 ### 注意
 
-- 免費方案有每分鐘 / 每天的請求上限，用完會顯示「AI 的免費額度暫時用完了(429)」,過一陣子再試即可
+- 免費方案有每分鐘 / 每天的請求上限(以專案計算，不是每個人)。超過時 App 會依錯誤內容分辨：
+  - 每分鐘上限：顯示「請 1 分鐘後再試」,按鈕鎖 60 秒
+  - 每日上限：顯示「今天的額度已用完，台灣時間下午 3 點(冬令時間 4 點)後恢復」(太平洋時間午夜重置)
 - 每天 30 次是 App 自己的上限(台灣時間換日重算),記在 `users/{uid}/meta/aiUsage`
 - AI 估的數字是估計值，清單上會標「AI 估計」,信心低的另外標「信心低」
 
